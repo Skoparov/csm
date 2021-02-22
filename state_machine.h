@@ -1,131 +1,190 @@
-#ifndef CP_STATE_MACHINE
-#define CP_STATE_MACHINE
- 
+#ifndef CPSM
+#define CPSM
+
 #include <type_traits>
- 
-namespace state_machine {
+
+namespace cpsm {
 namespace detail {
- 
-template<class... Transitions>
-struct TypePack;
- 
-template<class T, T... Values>
-struct ValuePack;
- 
-template<class T, T Target, class Pack>
+
+template<class... T>
+struct Pack {};
+
+// ad-hoc as MSVC can't properly deduce ValPack<auto Val, auto... Vals>
+template<auto Val, auto... Vals>
+struct ValType
+{
+    using Type = decltype(Val);
+    static_assert(std::conjunction_v<std::is_same<Type, decltype(Vals)>...>);
+};
+
+template<auto... Vals>
+struct ValPack
+{
+    using Type = typename ValType<Vals...>::Type;
+};
+
+template<auto Target, class Pack>
 struct ContainsValue : std::false_type {};
- 
-template<class T, T Target, T Curr, T... Values>
-struct ContainsValue<T, Target, ValuePack<T, Curr, Values...>> : std::conditional_t<
-    Target == Curr, std::true_type, ContainsValue<T, Target, ValuePack<T, Values...>>> {};
- 
-template<class>
-struct IsValuePack : std::false_type{};
- 
-template<class T, T... Values>
-struct IsValuePack<ValuePack<T, Values...>> : std::true_type{};
- 
-template<class State, class FromStatesList, State To, class EventsList>
+
+template<auto Target, auto Curr, auto... Values>
+struct ContainsValue<Target, ValPack<Curr, Values...>>
+    : std::conditional_t<
+        Target == Curr,
+        std::true_type,
+        ContainsValue<Target, ValPack<Values...>>> {};
+
+template<class FromStates, class OnEvents>
+struct If;
+
+template<auto... From, auto... Events>
+struct If<ValPack<From...>, ValPack<Events...>>
+{
+    using State = typename ValPack<From...>::Type;
+    using Event = typename ValPack<Events...>::Type;
+};
+
+template<auto To, class If, class... IfPack>
 struct TransitionPack
 {
-    using OnEvents = EventsList;
-    using FromStates = FromStatesList;
-    static constexpr State ToState{ To };
- 
-    static_assert(IsValuePack<EventsList>::value, "Use OnEvents<> pack to describe events");
-    static_assert(IsValuePack<FromStates>::value, "Use FromStates<> pack to describe source states");
+    using State = typename If::State;
+    using Event = typename If::Event;
 };
- 
-template<class State, State From, State To, class EventsList>
+
+template<auto From, auto To, class EventsList>
 struct Transition
 {
     using OnEvents = EventsList;
-    static constexpr State FromState{ From };
-    static constexpr State ToState{ To };
+    static constexpr auto FromState{ From };
+    static constexpr auto ToState{ To };
 };
- 
-template<class T, class U>
-struct MergePacks;
- 
-template<class... Pack1, class... Pack2>
-struct MergePacks<TypePack<Pack1...>, TypePack<Pack2...>>
+
+template<class State, class Event, class TransitionPack>
+struct IsValidPack;
+
+template<class State, class Event, auto To, class... IfPack>
+struct IsValidPack<State, Event, TransitionPack<To, IfPack...>> :
+        std::conjunction<
+            std::is_same<State, decltype(To)>,
+            std::conjunction<std::is_same<State, typename IfPack::State>...>,
+            std::conjunction<std::is_same<Event, typename IfPack::Event>...>> {};
+
+template<class... T>
+struct Merge;
+
+template<class... T>
+struct Merge<Pack<T...>>
 {
-    using type = TypePack<Pack1..., Pack2...>;
+    using Type = Pack<T...>;
 };
- 
-template<class State, class FromStatesList, State ToState, class OnEvents>
-struct MakeTransitionsForEachFromState;
- 
-template<class State, State... States, State ToState, class OnEvents>
-struct MakeTransitionsForEachFromState<State, ValuePack<State, States...>, ToState, OnEvents>
+
+template<class... T, class... U, class... Tail>
+struct Merge<Pack<T...>, Pack<U...>, Tail...>
 {
-    using type = TypePack<Transition<State, States, ToState, OnEvents>...>;
+    using Type = typename Merge<Pack<T..., U...>, Tail...>::Type;
 };
- 
-template<class State, class T>
-struct TransitionTableExpander;
- 
-template<class State, class TransitionPack, class... TransitionPacks>
-struct TransitionTableExpander<State, TypePack<TransitionPack, TransitionPacks...>>
+
+template<class... T>
+using MergeT = typename Merge<T...>::Type;
+
+template<auto To, class If>
+struct Expand;
+
+template<auto To, auto... FromStates, auto... Events>
+struct Expand<To, If<ValPack<FromStates...>, ValPack<Events...>>>
 {
-    using type = typename MergePacks<
-        typename MakeTransitionsForEachFromState
-        <
-            State,
-            typename TransitionPack::FromStates,
-            TransitionPack::ToState,
-            typename TransitionPack::OnEvents
-        >::type,
-        typename TransitionTableExpander<State, TypePack<TransitionPacks...>>::type>::type;
+    using Type = Pack<Transition<FromStates, To, ValPack<Events...>>...>;
 };
- 
-template<class State>
-struct TransitionTableExpander<State, TypePack<>>
+
+template<class T>
+struct ExpandPack;
+
+template<auto To, class... IfPack>
+struct ExpandPack<TransitionPack<To, IfPack...>>
 {
-    using type = TypePack<>;
+    using Type = MergeT<typename Expand<To, IfPack>::Type...>;
 };
- 
-template<class Transitions>
-using ExpandTransitions = typename TransitionTableExpander<
-    typename Transitions::StateType,
-    typename Transitions::Table>::type;
- 
-template<class T, class StateType, class EventType, class HandlerType>
-struct StateMachineImpl;
- 
-template<class... Transitions, class StateType, class EventType, class HandlerType>
-struct StateMachineImpl<TypePack<Transitions...>, StateType, EventType, HandlerType>
+
+template<class State, class Event, class... TransitionPacks>
+struct ExpandPacks
 {
+    static_assert(std::conjunction_v<
+        IsValidPack<State, Event, TransitionPacks>...>);
+
+    using Type = MergeT<typename ExpandPack<TransitionPacks>::Type...>;
+};
+
+template<class State, class Events, class Transitions>
+struct Table;
+
+template<auto Event, class... Transitions>
+struct GetPossibleTransitions;
+
+template<auto Event, class Transition, class... Transitions>
+struct GetPossibleTransitions<Event, Transition, Transitions...>
+{
+    using Type = std::conditional_t<
+        ContainsValue<Event, typename Transition::OnEvents>::value,
+        MergeT<Pack<Transition>, typename GetPossibleTransitions<Event, Transitions...>::Type>,
+        typename GetPossibleTransitions<Event, Transitions...>::Type>;
+};
+
+template<auto Event>
+struct GetPossibleTransitions<Event>
+{
+    using Type = Pack<>;
+};
+
+}//detail
+
+template<class Table, class Handler>
+class StateMachine;
+
+template<class State, class Event, class... Transitions, class Handler>
+class StateMachine<detail::Table<State, Event, detail::Pack<Transitions...>>, Handler>
+{
+    static_assert(std::is_enum_v<State>);
+    static_assert(std::is_enum_v<Event>);
+
 public:
-    StateMachineImpl(HandlerType& handler, StateType startState) noexcept
+    StateMachine(Handler& handler, State startState) noexcept
         : m_state(startState)
         , m_handler(handler)
     {}
- 
-    template<EventType Event>
+
+    template<Event E>
     void ProcessEvent()
     {
-        ProcessEventImpl<Event, Transitions...>();
+        using PossibleTransitions =
+            typename detail::GetPossibleTransitions<E, Transitions...>::Type;
+
+        constexpr PossibleTransitions possibleTransitions;
+        Dispatch<E>(possibleTransitions);
     }
- 
-    StateType GetState() const noexcept
+
+    State GetState() const noexcept
     {
         return m_state;
     }
- 
+
 private:
-    template<EventType Event, class Transition, class... RemainingTransitions>
-    void ProcessEventImpl()
+    template<Event E, class... PossibleTransitions>
+    void Dispatch(detail::Pack<PossibleTransitions...>)
     {
-        if (TransitionFits<Transition, Event>())
+        Dispatch<E, PossibleTransitions...>();
+    }
+
+    template<Event E, class Transition, class... Ts>
+    void Dispatch()
+    {
+        if (m_state == Transition::FromState)
         {
             if (m_state != Transition::ToState)
             {
                 OnLeaveState<Transition::FromState>(m_handler);
             }
- 
+
             OnTransition<Transition::FromState, Transition::ToState>(m_handler);
- 
+
             if (m_state != Transition::ToState)
             {
                 OnEnterState<Transition::ToState>(m_handler);
@@ -134,81 +193,81 @@ private:
         }
         else
         {
-            ProcessEventImpl<Event, RemainingTransitions...>();
+            Dispatch<E, Ts...>();
         }
     }
- 
-    template<EventType Event, class... RemainingTransitions>
-    std::enable_if_t<sizeof...(RemainingTransitions) == 0> ProcessEventImpl() noexcept {}
- 
-    template<StateType From, StateType To, class Handler>
-    static auto OnTransition(Handler& handler) -> decltype(handler.template OnTransition<From, To>(), void())
+
+    template<Event E, class... Ts>
+    std::enable_if_t<!sizeof...(Ts)> Dispatch() noexcept {}
+
+    template<State From, State To, class H>
+    static auto OnTransition(H& handler)
+        -> decltype(handler.template OnTransition<From, To>())
     {
-        static_cast<void>(handler.template OnTransition<From, To>());
+        static_assert(std::is_same_v<
+                decltype(handler.template OnTransition<From, To>()),
+                void>);
+
+        handler.template OnTransition<From, To>();
     }
- 
-    template<StateType, StateType>
+
+    template<State, State>
     static void OnTransition(...) noexcept{}
- 
-    template<StateType State, class Handler>
-    static auto OnEnterState(Handler& handler) -> decltype(handler.template OnEnterState<State>(), void())
+
+    template<State S, class H>
+    static auto OnEnterState(H& handler)
+        -> decltype(handler.template OnEnterState<S>())
     {
-        static_cast<void>(handler.template OnEnterState<State>());
+        static_assert(std::is_same_v<
+                decltype(handler.template OnEnterState<S>()),
+                void>);
+
+        handler.template OnEnterState<S>();
     }
- 
-    template<StateType>
+
+    template<State>
     static void OnEnterState(...) noexcept {}
- 
-    template<StateType State, class Handler>
-    static auto OnLeaveState(Handler& handler) -> decltype(handler.template OnLeaveState<State>(), void())
+
+    template<State S, class H>
+    static auto OnLeaveState(H& handler)
+        -> decltype(handler.template OnLeaveState<S>())
     {
-        static_cast<void>(handler.template OnLeaveState<State>());
+        static_assert(std::is_same_v<
+                decltype(handler.template OnLeaveState<S>()),
+                void>);
+
+        handler.template OnLeaveState<S>();
     }
- 
-    template<StateType>
+
+    template<State S>
     static void OnLeaveState(...) noexcept {}
- 
-    template<class Transition, EventType Event>
-    bool TransitionFits() const noexcept
-    {
-        return
-            m_state == Transition::FromState &&
-            ContainsValue<EventType, Event, typename Transition::OnEvents>::value;
-    }
- 
+
 private:
-    StateType m_state;
-    HandlerType& m_handler;
+    State m_state;
+    Handler& m_handler;
 };
- 
-}// detail
- 
-template<class... Transitions>
-using TransitionTable = detail::TypePack<Transitions...>;
- 
-template<class State, class Event>
-struct TransitionsInfoBase
-{
-    using StateType = State;
-    using EventType = Event;
- 
-    template<State... States>
-    using FromStates = detail::ValuePack<State, States...>;
- 
-    template<Event... Events>
-    using OnEvents = detail::ValuePack<Event, Events...>;
- 
-    template<State To, class FromStatesList, class OnEvents>
-    using TransitionTo = detail::TransitionPack<State, FromStatesList, To, OnEvents>;
-};
- 
-template<class TransitionsInfo, class Handler>
-using StateMachine = detail::StateMachineImpl<
-    detail::ExpandTransitions<TransitionsInfo>,
-    typename TransitionsInfo::StateType,
-    typename TransitionsInfo::EventType,
-    Handler>;
- 
+
+template<class TransitionPack, class... TransitionPacks>
+using TransitionTable = detail::Table<
+    typename TransitionPack::State,
+    typename TransitionPack::Event,
+    typename detail::ExpandPacks<
+        typename TransitionPack::State,
+        typename TransitionPack::Event,
+        TransitionPack, TransitionPacks...>::Type>;
+
+template<auto... States>
+using From = detail::ValPack<States...>;
+
+template<auto... Events>
+using On = detail::ValPack<Events...>;
+
+template<class FromStates, class OnEvents>
+using If = detail::If<FromStates, OnEvents>;
+
+template<auto ToState, class... IfPack>
+using To = detail::TransitionPack<ToState, IfPack...>;
+
 }// state_machine
- 
-#endif // CP_STATE_MACHINE
+
+#endif // CPSM
