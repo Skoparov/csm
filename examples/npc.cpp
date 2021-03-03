@@ -142,7 +142,7 @@ public:
     {
         std::cout << "Ouch!\n";
         m_attitude = 0;
-        ApplyChange(m_health, m_maxHealth, -damage);
+        ApplyChange(m_health, m_maxHealth, -static_cast<int8_t>(damage));
     }
 
     template<State From, State To, std::enable_if_t<NeedTransitionCheck<To>>...>

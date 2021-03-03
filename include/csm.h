@@ -2,6 +2,7 @@
 #define CSM_STATE_MACHINE
 
 #include <cstddef>
+#include <utility>
 #include <type_traits>
 
 namespace csm {
