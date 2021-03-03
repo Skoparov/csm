@@ -25,32 +25,17 @@ SCENARIO("TransitionCheck", "[StateMachine]")
             THEN("Corresponding callbacks are called and states changed correctly")
             {
                 // S0 + E0 = S2
-                checker.CheckTransitionToOnEvent<Event::_0>(State::_2);
+                checker.CheckCallsOnEvent<Event::_0>(EventData, State::_2);
 
                 // S2 + E1 = S1
-                checker.CheckTransitionToOnEvent<Event::_1>(State::_1);
+                checker.CheckCallsOnEvent<Event::_1>(EventData, State::_1);
             }
         }
         WHEN("Transition not found")
         {
-            THEN("Event ignored, callbacks not called and state not changed")
+            THEN("callbacks not called and state not changed")
             {
-                checker.CheckNoTransitionOccured<Event::Unused>();
-            }
-        }
-    }
-
-    GIVEN("Handler accepting only selected calls")
-    {
-        TransitionChecker<
-                MockHandlerSelective,
-                TestTransitionTable> selectiveChecker{ StartState };
-
-        WHEN("All transitions triggered separately")
-        {
-            THEN("Only selected callbacks are called and states changed correctly")
-            {
-                CheckTransitions(AllTransitions{}, selectiveChecker);
+                checker.CheckCallsOnEvent<Event::Unused>(EventData);
             }
         }
     }
@@ -66,6 +51,43 @@ SCENARIO("TransitionCheck", "[StateMachine]")
                 REQUIRE(sm.GetState() == State::_2);
             }
         }
+    }
+}
+
+SCENARIO("SelectiveConditionsCheck", "[StateMachine]")
+{
+    GIVEN("Handler accepting only selected calls")
+    {
+        TransitionChecker<
+                MockHandlerSelective,
+                TestTransitionTable> selectiveChecker{ StartState };
+
+        WHEN("All transitions triggered separately")
+        {
+            THEN("Only selected callbacks are called and states changed correctly")
+            {
+                CheckTransitions(AllTransitions{}, selectiveChecker);
+            }
+        }
+    }
+}
+
+SCENARIO("AllowedConditionsCheck", "[StateMachine]")
+{
+    GIVEN("Handler accepting all calls")
+    {
+        TransitionChecker<
+            MockHandlerAllowedConditions,
+            TestTransitionTable> checker{ StartState };
+
+        WHEN("All transitions triggered separately")
+        {
+            THEN("Conditions checked, Allowed callbacks are called, states changed correctly")
+            {
+                CheckTransitions(AllTransitions{}, checker);
+            }
+        }
+
     }
 }
 

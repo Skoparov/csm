@@ -10,20 +10,9 @@ enum class Event{ _0, _1, _2, Unused };
 
 constexpr State StartState{ State::_0 };
 
-/*
-Expanded transition Table:
-S0 + E0 = S2
-S0 + E1 = S2
-S0 + E2 = S2
-S1 + E2 = S2
-S2 + E0 = S0
-S1 + E0 = S0
-S2 + E1 = S1
-*/
-
 struct TestTransitionTable : csm::TransitionTableBase<State, Event>
 {
-    static constexpr auto Rules{ csm::MakeTransitionRules
+    static constexpr auto PossibleTransition{ csm::MakePossibleTransitions
     (
         (From<State::_0> + On<Event::_0, Event::_1>) ||
         (From<State::_0, State::_1, State::_2> + On<Event::_2>) = To<State::_2>,

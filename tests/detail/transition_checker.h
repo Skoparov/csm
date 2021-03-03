@@ -1,10 +1,13 @@
 #ifndef CSM_TEST_TRANSITION_CHECKER_H
 #define CSM_TEST_TRANSITION_CHECKER_H
 
+#include "handler_mock.h"
 #include "required_calls.h"
 #include <csm.h>
 
 namespace csm::test{
+
+constexpr int EventData{ 42 };
 
 template<class Handler, class TransitionTable>
 class TransitionChecker
@@ -18,25 +21,26 @@ public:
         : m_stateMachine(startState, &m_handler) {}
 
     template<Event E>
-    void CheckTransitionToOnEvent(State to)
+    void CheckCallsOnEvent(int data, std::optional<State> to = {})
     {
         State from{ m_stateMachine.GetState() };
-        RequiredCalls calls{ m_handler.GetRequiredCalls(from, to) };
+        std::optional<Tr<State>> transition;
+        if (to.has_value())
+        {
+            transition = Tr(from, *to);
+        }
 
-        ExpectTransitionCalls(from, to, calls);
-        REQUIRE_NOTHROW(m_stateMachine.template ProcessEvent<E>());
-        REQUIRE(m_stateMachine.GetState() == to);
+        bool stateMustChange{
+            m_handler.IsAllowedEvent(E) &&
+            transition.has_value() &&
+            m_handler.IsAllowedTransition(*transition) };
 
-        m_handler.CheckAllExpectationsSatisfied();
-    }
+        State expectedState{ stateMustChange? *to : from };
+        RequiredCalls calls{ m_handler.GetRequiredCalls(E, transition) };
+        ExpectTransitionCalls(E, data, calls, transition);
 
-    template<Event E>
-    void CheckNoTransitionOccured()
-    {
-        State state{ m_stateMachine.GetState() };
-        REQUIRE_NOTHROW(m_stateMachine.template ProcessEvent<E>());
-        REQUIRE(m_stateMachine.GetState() == state);
-
+        CHECK_NOTHROW(m_stateMachine.template ProcessEvent<E>(data));
+        REQUIRE(m_stateMachine.GetState() == expectedState);
         m_handler.CheckAllExpectationsSatisfied();
     }
 
@@ -46,21 +50,40 @@ public:
     }
 
 private:
-    void ExpectTransitionCalls(State from, State to, RequiredCalls flags)
+    void ExpectTransitionCalls(
+                Event event,
+                int eventData,
+                RequiredCalls flags,
+                std::optional<Tr<State>> transition)
     {
-        if (flags & RequiredCalls::Leave)
+        if (flags & LeaveCall)
         {
-            m_handler.ExpectLeaveCalls(from);
+            m_handler.ExpectLeaveCall(transition->from);
         }
 
-        if (flags & RequiredCalls::Transition)
+        if (flags & TransitionCall)
         {
-            m_handler.ExpectTransitionCalls(from, to);
+            m_handler.ExpectTransitionCall(*transition);
         }
 
-        if (flags & RequiredCalls::Enter)
+        if (flags & EnterCall)
         {
-            m_handler.ExpectEnterCalls(to);
+            m_handler.ExpectEnterCall(transition->to);
+        }
+
+        if (flags & EventCall)
+        {
+            m_handler.ExpectEventCall(event, eventData);
+        }
+
+        if (flags & EventAllowedCall)
+        {
+            m_handler.ExpectEventAllowedCall(event);
+        }
+
+        if (flags & TransitionAllowedCall)
+        {
+            m_handler.ExpectTransitionAllowedCall(*transition);
         }
     }
 
@@ -76,22 +99,23 @@ template<class Checker, class State, State From, State To,
 void CheckTransitions(
     csmd::Pack<
         csmd::Transition<From, To, csmd::ValPack<CurrEvent, Events...>>,
-        RemainingTransitions...> /* transitions */,
+        RemainingTransitions...>  /*transitions*/,
     Checker& checker)
 {
     checker.ResetStateMachine(From);
-    checker. template CheckTransitionToOnEvent<CurrEvent>(To);
+    checker.template CheckCallsOnEvent<CurrEvent>(EventData, To);
 
     if constexpr(sizeof...(Events) != 0)
     {
-        using IncTransition = csm::detail::Transition<From, To, csm::detail::ValPack<Events...>>;
-        using Next = csm::detail::Pack<IncTransition, RemainingTransitions...>;
+        using Next = csmd::Pack<
+            csmd::Transition<From, To, csmd::ValPack<Events...>>,
+            RemainingTransitions...>;
+
         CheckTransitions(Next{}, checker);
     }
     else if constexpr(sizeof...(RemainingTransitions) != 0)
     {
-        using Next = csm::detail::Pack<RemainingTransitions...>;
-        CheckTransitions(Next{}, checker);
+        CheckTransitions(csmd::Pack<RemainingTransitions...>{}, checker);
     }
 }
 

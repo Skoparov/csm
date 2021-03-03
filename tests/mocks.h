@@ -2,7 +2,6 @@
 #define CSM_TEST_MOCKS_H
 
 #include "transition_table.h"
-#include "detail/handler_mock.h"
 #include "detail/transition_checker.h"
 
 namespace csm::test{
@@ -12,47 +11,126 @@ struct MockHandlerAcceptAll : HandlerMock<MockHandlerAcceptAll, State, Event>
     MOCK_ON_TRANSITION(From, To)
     MOCK_ON_ENTER_STATE(From)
     MOCK_ON_LEAVE_STATE(To)
+    MOCK_ON_EVENT(Trigger);
 
-    RequiredCalls GetRequiredCallsImpl(State from, State to) const noexcept
+    RequiredCalls GetRequiredCallsImpl(
+            Event /*e*/,
+            std::optional<Tr<State>> transition) const noexcept
     {
-        RequiredCalls calls{ Transition };
-        if (from != to)
+        RequiredCalls calls{ EventCall };
+        if (transition.has_value())
         {
-            calls = calls | Leave | Enter;
+            calls |= TransitionCall;
+            if (transition->IsStateChanged())
+            {
+                calls |= LeaveCall | EnterCall;
+            }
         }
 
         return calls;
+    }
+
+    bool IsAllowedEventImpl(Event /*e*/) const noexcept
+    {
+        return true;
+    }
+
+    bool IsAllowedTransitionImpl(Tr<State> /*transition*/) const noexcept
+    {
+        return true;
     }
 };
 
 struct MockHandlerSelective : HandlerMock<MockHandlerSelective, State, Event>
 {
-    static constexpr State AllowedFrom{ State::_0 };
-    static constexpr State AllowedTo{ State::_2 };
+    static constexpr State HandledFrom{ State::_0 };
+    static constexpr State HandledTo{ State::_2 };
+    static constexpr Event HandledEvent{ Event::_0 };
 
-    MOCK_ON_TRANSITION_COND(From, To, From == AllowedFrom && To == AllowedTo)
-    MOCK_ON_ENTER_STATE_COND(From, From == AllowedTo)
-    MOCK_ON_LEAVE_STATE_COND(To, To == AllowedFrom)
+    MOCK_ON_TRANSITION_COND(From, To, From == HandledFrom && To == HandledTo)
+    MOCK_ON_ENTER_STATE_COND(To, To == HandledTo)
+    MOCK_ON_LEAVE_STATE_COND(From, From == HandledFrom)
+    MOCK_ON_EVENT_COND(Trigger, Trigger == HandledEvent);
 
-    RequiredCalls GetRequiredCallsImpl(State from, State to) const noexcept
+    RequiredCalls GetRequiredCallsImpl(
+            Event e,
+            std::optional<Tr<State>> transition) const noexcept
     {
-        RequiredCalls calls{ None };
-        if (from == AllowedFrom && from != to)
+        RequiredCalls calls{ e == HandledEvent? EventCall : NoCalls };
+        if (transition.has_value())
         {
-            calls = calls | Leave;
-        }
+            if (transition->from == HandledFrom && transition->IsStateChanged())
+            {
+                calls |= LeaveCall;
+            }
 
-        if (to == AllowedTo && from != to)
-        {
-            calls = calls | Enter;
-        }
+            if (transition->to == HandledTo && transition->IsStateChanged())
+            {
+                calls |= EnterCall;
+            }
 
-        if (from == AllowedFrom && to == AllowedTo)
-        {
-            calls = calls | Transition;
+            if (transition->from == HandledFrom && transition->to == HandledTo)
+            {
+                calls |= TransitionCall;
+            }
         }
 
         return calls;
+    }
+
+    bool IsAllowedEventImpl(Event /*e*/) const noexcept
+    {
+        return true;
+    }
+
+    bool IsAllowedTransitionImpl(Tr<State> /*transition*/) const noexcept
+    {
+        return true;
+    }
+};
+
+struct MockHandlerAllowedConditions : HandlerMock<MockHandlerAllowedConditions, State, Event>
+{
+    static constexpr State AllowedFrom{ State::_0 };
+    static constexpr State AllowedTo{ State::_2 };
+    static constexpr Event AllowedEvent{ Event::_0 };
+
+    MOCK_ON_TRANSITION(From, To)
+    MOCK_ON_ENTER_STATE(From)
+    MOCK_ON_LEAVE_STATE(To)
+    MOCK_ON_EVENT(Trigger);
+    MOCK_ALLOW_EVENT(Trigger);
+    MOCK_ALLOW_TRANSITION(From, To);
+
+    RequiredCalls GetRequiredCallsImpl(
+        Event e,
+        std::optional<Tr<State>> transition) const noexcept
+    {
+        RequiredCalls calls{ EventAllowedCall };
+        if (IsAllowedEventImpl(e))
+        {
+            calls |= EventCall | TransitionAllowedCall;
+            if (transition.has_value() && IsAllowedTransitionImpl(*transition))
+            {
+                calls |= TransitionCall;
+                if (transition->IsStateChanged())
+                {
+                    calls |= LeaveCall | EnterCall;
+                }
+            }
+        }
+
+        return calls;
+    }
+
+    bool IsAllowedEventImpl(Event e) const noexcept
+    {
+        return e == AllowedEvent;
+    }
+
+    bool IsAllowedTransitionImpl(Tr<State> transition) const noexcept
+    {
+        return transition.from == AllowedFrom && transition.to == AllowedTo;
     }
 };
 

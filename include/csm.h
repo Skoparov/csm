@@ -18,8 +18,9 @@ struct ValPack
 {
     using Type = decltype(Val);
 
-    template<Type Target>
-    static constexpr bool Contains{ ((Target == Vals) || ... || (Target == Val)) };
+    template<auto Target>
+    static constexpr bool Contains{
+        ((Target == Vals) || ... || (Target == Val)) };
 };
 
 template<auto... States>
@@ -125,9 +126,13 @@ constexpr auto GetPossibleTransitions(Pack<FittingTransitions...> = Pack<>{}) no
         Pack<FittingTransitions...>>;
 
     if constexpr(sizeof...(Transitions) != 0)
+    {
         return GetPossibleTransitions<Event, Transitions...>(Type{});
+    }
     else
+    {
         return Type{};
+    }
 }
 
 template<class... Ifs>
@@ -182,14 +187,18 @@ struct MakeTransitionTable<Pack<TransitionPack, Packs...>>
 };
 
 template<class T>
-using MakeTransitionTableT = typename MakeTransitionTable<std::decay_t<decltype(T::Rules)>>::Type;
+using MakeTransitionTableT = typename MakeTransitionTable<std::decay_t<decltype(T::PossibleTransition)>>::Type;
 
 template<class Handler, auto From, auto To, class = void>
 struct HasOnTransition : std::false_type {};
 
 template<class Handler, auto From, auto To>
 struct HasOnTransition<Handler, From, To,
-    decltype(std::declval<Handler&>().template OnTransition<From, To>())> : std::true_type {};
+    std::void_t<decltype(std::declval<Handler&>().template OnTransition<From, To>())>> : std::true_type
+{
+    using R = decltype(std::declval<Handler&>().template OnTransition<From, To>());
+    static_assert(std::is_same_v<R, void>, "OnTransition() should return void");
+};
 
 template<class Handler, auto From, auto To>
 constexpr bool HasOnTransitionV{ HasOnTransition<Handler, From, To>::value };
@@ -199,7 +208,11 @@ struct HasOnEnter : std::false_type {};
 
 template<class Handler, auto S>
 struct HasOnEnter<Handler, S,
-    decltype(std::declval<Handler&>().template OnEnterState<S>())> : std::true_type {};
+    std::void_t<decltype(std::declval<Handler&>().template OnEnterState<S>())>> : std::true_type
+{
+    using R = decltype(std::declval<Handler&>().template OnEnterState<S>());
+    static_assert(std::is_same_v<R, void>, "OnEnterState() should return void");
+};
 
 template<class Handler, auto S>
 constexpr bool HasOnEnterV{ HasOnEnter<Handler, S>::value };
@@ -209,22 +222,56 @@ struct HasOnLeave : std::false_type {};
 
 template<class Handler, auto S>
 struct HasOnLeave<Handler, S,
-    decltype(std::declval<Handler&>().template OnLeaveState<S>())> : std::true_type {};
+    std::void_t<decltype(std::declval<Handler&>().template OnLeaveState<S>())>> : std::true_type
+{
+    using R = decltype(std::declval<Handler&>().template OnLeaveState<S>());
+    static_assert(std::is_same_v<R, void>, "OnLeaveState() should return void");
+};
 
 template<class Handler, auto S>
 constexpr bool HasOnLeaveV{ HasOnLeave<Handler, S>::value };
 
-template<class Handler, auto S>
-constexpr bool IsLeaveNoexcept{
-    noexcept(std::declval<Handler&>().template OnLeaveState<S>()) };
+template<class Handler, auto S, class ArgsPack, class = void>
+struct HasOnEvent : std::false_type {};
 
-template<class Handler, auto S>
-constexpr bool IsEnterNoexcept{
-    noexcept(std::declval<Handler&>().template OnEnterState<S>()) };
+template<class Handler, auto E, class... Args>
+struct HasOnEvent<Handler, E, Pack<Args...>,
+    std::void_t<decltype(std::declval<Handler&>().template OnEvent<E>(std::declval<Args>()...))>> : std::true_type
+{
+    using R = decltype(std::declval<Handler&>().template OnEvent<E>(std::declval<Args>()...));
+    static_assert(std::is_same_v<R, void>, "OnEvent() should return void");
+};
+
+template<class Handler, auto E, class ArgsPack>
+constexpr bool HasOnEventV{ HasOnEvent<Handler, E, ArgsPack>::value };
+
+template<class Handler, auto From, auto To, class = void>
+struct HasAllowTransition : std::false_type {};
 
 template<class Handler, auto From, auto To>
-constexpr bool IsTransitionNoexcept{
-    noexcept(std::declval<Handler&>().template OnTransition<From, To>()) };
+struct HasAllowTransition<Handler, From, To,
+    std::void_t<decltype(std::declval<Handler&>().template AllowTransition<From, To>())>> : std::true_type
+{
+    using R = decltype(std::declval<Handler&>().template AllowTransition<From, To>());
+    static_assert(std::is_same_v<R, bool>, "AllowTransition() should return bool");
+};
+
+template<class Handler, auto From, auto To>
+constexpr bool HasAllowTransitionV{ HasAllowTransition<Handler, From, To>::value };
+
+template<class Handler, auto E, class = void>
+struct HasAllowEvent : std::false_type {};
+
+template<class Handler, auto E>
+struct HasAllowEvent<Handler, E,
+    std::void_t<decltype(std::declval<Handler&>().template AllowEvent<E>())>> : std::true_type
+{
+    using R = decltype(std::declval<Handler&>().template AllowEvent<E>());
+    static_assert(std::is_same_v<R, bool>, "AllowEvent() should return bool");
+};
+
+template<class Handler, auto E>
+constexpr bool HasAllowEventV{ HasAllowEvent<Handler, E>::value };
 
 template<class Table, class Handler>
 class EventProcessor;
@@ -236,79 +283,98 @@ public:
     using StateT = State;
     using EventT = Event;
 
-protected:
+public:
     EventProcessor(State startState, Handler* handler) noexcept
         : m_state(startState)
         , m_handler(handler)
     {}
 
-    template<auto E>
-    void ProcessEvent()
+    template<auto E, class... Args>
+    void ProcessEvent(Args&&... args)
     {
-        constexpr auto PossibleTransitions{ GetPossibleTransitions<E, Transitions...>() };
-        if constexpr(PossibleTransitions.Size != 0)
+        if constexpr(HasAllowEventV<Handler, E>)
         {
-            ProcessEvent<E>(PossibleTransitions);
+            if (m_handler && !m_handler-> template AllowEvent<E>())
+                return;
         }
-    }
 
-    template<Event E, class Tr, class... Trs>
-    void ProcessEvent(Pack<Tr, Trs...>)
-    {
-        if (m_state == Tr::FromState)
+        if constexpr(HasOnEventV<Handler, E, Pack<Args...>>)
         {
             if (m_handler)
             {
-                constexpr bool stateChanged{ Tr::FromState != Tr::ToState };
-                if constexpr(stateChanged && HasOnLeaveV<Handler, Tr::FromState>)
+                m_handler->template OnEvent<E>(std::forward<Args>(args)...);
+            }
+        }
+
+        constexpr auto PossibleTransitions{ GetPossibleTransitions<E, Transitions...>() };
+        if constexpr(PossibleTransitions.Size != 0)
+        {
+            ProcessEvent<E>(PossibleTransitions, std::forward<Args>(args)...);
+        }
+    }
+
+    State GetState() const noexcept
+    {
+        return m_state;
+    }
+
+    void SetHandler(Handler* h) noexcept
+    {
+        m_handler = h;
+    }
+
+private:
+    template<Event E, class Tr, class... Trs, class... Args>
+    void ProcessEvent(Pack<Tr, Trs...>, Args&&...args)
+    {
+        if (m_state == Tr::FromState)
+        {
+            bool transitionAllowed{ true };
+            if (m_handler)
+            {
+                if constexpr(HasAllowTransitionV<Handler, Tr::FromState, Tr::ToState>)
                 {
-                    OnLeaveState<Tr::FromState>();
+                    transitionAllowed = m_handler->template AllowTransition<Tr::FromState, Tr::ToState>();
                 }
 
-                if constexpr(HasOnTransitionV<Handler, Tr::FromState, Tr::ToState>)
+                if (transitionAllowed)
                 {
-                    OnTransition<Tr::FromState, Tr::ToState>();
-                }
+                    constexpr bool stateChanged{ Tr::FromState != Tr::ToState };
+                    if constexpr(HasOnLeaveV<Handler, Tr::FromState> && stateChanged)
+                    {
+                        m_handler->template OnLeaveState<Tr::FromState>();
+                    }
 
-                if constexpr(stateChanged && HasOnEnterV<Handler, Tr::ToState>)
-                {
-                    OnEnterState<Tr::ToState>();
+                    if constexpr(HasOnTransitionV<Handler, Tr::FromState, Tr::ToState>)
+                    {
+                        m_handler->template OnTransition<Tr::FromState, Tr::ToState>();
+                    }
+
+                    if constexpr(HasOnEnterV<Handler, Tr::ToState> && stateChanged)
+                    {
+                        m_handler->template OnEnterState<Tr::ToState>();
+                    }
                 }
             }
 
-            m_state = Tr::ToState;
+            if (transitionAllowed)
+            {
+                m_state = Tr::ToState;
+                return;
+            }
         }
-        else if constexpr(sizeof...(Trs) != 0)
+
+        if constexpr(sizeof...(Trs) != 0)
         {
-            ProcessEvent<E>(Pack<Trs...>{});
+            ProcessEvent<E>(Pack<Trs...>{}, std::forward<Args>(args)...);
+        }
+        else
+        {
+            (static_cast<void>(args), ...);
         }
     }
 
-    template<State From>
-    void OnLeaveState() noexcept(IsLeaveNoexcept<Handler, From>)
-    {
-        using R = decltype(m_handler->template OnLeaveState<From>());
-        static_assert(std::is_same_v<R, void>, "Handler should return void");
-        m_handler->template OnLeaveState<From>();
-    }
-
-    template<State To>
-    void OnEnterState() noexcept(IsEnterNoexcept<Handler, To>)
-    {
-        using R = decltype(m_handler->template OnEnterState<To>());
-        static_assert(std::is_same_v<R, void>, "Handler should return void");
-        m_handler->template OnEnterState<To>();
-    }
-
-    template<State From, State To>
-    void OnTransition() noexcept(IsTransitionNoexcept<Handler, From, To>)
-    {
-        using R = decltype(m_handler->template OnTransition<From, To>());
-        static_assert(std::is_same_v<R, void>, "Handler should return void");
-        m_handler->template OnTransition<From, To>();
-    }
-
-protected:
+private:
     State m_state;
     Handler* m_handler;
 };
@@ -321,33 +387,37 @@ using EventProcessorT = EventProcessor<
 }//detail
 
 template<class TransitionTable, class Handler>
-class StateMachine : public detail::EventProcessorT<TransitionTable, Handler>
+class StateMachine
 {
-    using Base = detail::EventProcessorT<TransitionTable, Handler>;
+public:
+    using Processor = detail::EventProcessorT<TransitionTable, Handler>;
 
 public:
-    using State = typename Base::StateT;
-    using Event = typename Base::EventT;
+    using State = typename Processor::StateT;
+    using Event = typename Processor::EventT;
 
 public:
     StateMachine(State startState, Handler* handler = nullptr) noexcept
-        : Base(startState, handler) {}
+        : m_processor(startState, handler) {}
 
-    template<Event E>
-    void ProcessEvent()
+    template<auto E, class... Args>
+    void ProcessEvent(Args&&... args)
     {
-        Base::template ProcessEvent<E>();
-    }
-
-    void SetHandler(Handler* handler) noexcept
-    {
-        Base::m_handler = handler;
+        m_processor.template ProcessEvent<E>(std::forward<Args>(args)...);
     }
 
     State GetState() const noexcept
     {
-        return Base::m_state;
+        return m_processor.GetState();
     }
+
+    void SetHandler(Handler* handler) noexcept
+    {
+        m_processor.SetHandler(handler);
+    }
+
+private:
+    Processor m_processor;
 };
 
 template<class State, class Event>
@@ -366,8 +436,13 @@ struct TransitionTableBase
     static constexpr detail::To<ToState> To{};
 };
 
+// These transitions describe possible ways the state may change
+// If a transition is only allowed upon meeting a certain condition
+// i.e transition to Dead is only allowed if "health == 0"
+// you can impose this restriction in the handler
+
 template<class... T>
-constexpr auto MakeTransitionRules(T&&...) noexcept
+constexpr auto MakePossibleTransitions(T&&...) noexcept
 {
     return detail::Pack<std::decay_t<T>...>{};
 }
