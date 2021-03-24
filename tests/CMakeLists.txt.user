@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE QtCreatorProject>
-<!-- Written by QtCreator 4.14.0, 2021-03-03T15:39:44. -->
+<!-- Written by QtCreator 4.14.0, 2021-03-24T19:21:06. -->
 <qtcreator>
  <data>
   <variable>EnvironmentId</variable>
@@ -65,13 +65,21 @@
     <value type="bool" key="AutoTest.Framework.QtTest">true</value>
    </valuemap>
    <valuemap type="QVariantMap" key="AutoTest.CheckStates">
+    <value type="Qt::CheckState" key="D:/Repo/csm/tests/tests.cpp:Check state transition callbacks">Checked</value>
+    <value type="Qt::CheckState" key="D:/Repo/csm/tests/tests.cpp:Check state transitions">Checked</value>
     <value type="Qt::CheckState" key="D:/Repo/csm/tests/tests.cpp:D:/Repo/csm/tests/tests.cpp">Checked</value>
-    <value type="Qt::CheckState" key="D:/Repo/csm/tests/tests.cpp:Scenario: AllowedConditionsCheck">Checked</value>
-    <value type="Qt::CheckState" key="D:/Repo/csm/tests/tests.cpp:Scenario: SelectiveConditionsCheck">Checked</value>
-    <value type="Qt::CheckState" key="D:/Repo/csm/tests/tests.cpp:Scenario: TransitionCheck">Checked</value>
+    <value type="Qt::CheckState" key="D:/Repo/csm/tests/tests.cpp:Event rules generation">Checked</value>
+    <value type="Qt::CheckState" key="D:/Repo/csm/tests/tests.cpp:Predicates check">Checked</value>
+    <value type="Qt::CheckState" key="D:/Repo/csm/tests/tests.cpp:Traits check">Checked</value>
+    <value type="Qt::CheckState" key="D:/Repo/csm/tests/tests.cpp:Transitions generation">Checked</value>
    </valuemap>
    <value type="int" key="AutoTest.RunAfterBuild">0</value>
    <value type="bool" key="AutoTest.UseGlobal">true</value>
+   <valuelist type="QVariantList" key="ClangCodeModel.CustomCommandLineKey">
+    <value type="QString">-fno-delayed-template-parsing</value>
+   </valuelist>
+   <value type="bool" key="ClangCodeModel.UseGlobalConfig">true</value>
+   <value type="QString" key="ClangCodeModel.WarningConfigId">Builtin.Questionable</value>
    <valuemap type="QVariantMap" key="ClangTools">
     <value type="bool" key="ClangTools.AnalyzeOpenFiles">true</value>
     <value type="bool" key="ClangTools.BuildBeforeAnalysis">true</value>
