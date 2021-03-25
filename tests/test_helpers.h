@@ -1,7 +1,7 @@
 #pragma once
 
 #include <csm.h>
-#include <catch.hpp>
+#include <catch/catch.hpp>
 
 namespace csm::test{
 

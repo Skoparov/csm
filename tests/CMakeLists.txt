@@ -5,7 +5,7 @@ project(csm_tests LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-include_directories(../include test_framework)
+include_directories(../include ../lib)
 
 set(sources
     test_helpers.h

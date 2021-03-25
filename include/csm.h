@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <type_traits>
+#include <utility>
 
 namespace csm {
 namespace detail {
@@ -539,9 +540,6 @@ struct StatefulObject
 
     template<class... Preds>
     static constexpr detail::If<Impl, Any<Preds...>> IfAny{};
-
-    template<class... Preds>
-    static constexpr detail::If<Impl, All<Preds...>> IfAll{};
 
     template<class... Preds>
     static constexpr detail::If<Impl, None<Preds...>> IfNone{};
