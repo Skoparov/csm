@@ -1,6 +1,8 @@
 #include <csm.h>
 #include <iostream>
 
+namespace events_example {
+
 enum class MyState{ _1, _2 };
 
 // Events
@@ -9,7 +11,7 @@ struct ValueAdd2{ int change; };
 struct ValueReset{};
 struct EndOfCalc{};
 
-struct Impl : csm::StatefulObject<Impl>
+struct EventsExample : csm::StateMachine<EventsExample, MyState>
 {
     // States
     struct State1 : State<MyState::_1>{};
@@ -19,7 +21,7 @@ struct Impl : csm::StatefulObject<Impl>
     template<int Val>
     struct ValueIs
     {
-        bool operator()(Impl& impl) const noexcept
+        bool operator()(EventsExample& impl) const noexcept
         {
             return impl.value == Val;
         }
@@ -29,7 +31,7 @@ struct Impl : csm::StatefulObject<Impl>
     struct ChangeValue
     {
         template<class Event>
-        void operator()(Impl& impl, const Event& e) const noexcept
+        void operator()(EventsExample& impl, const Event& e) const noexcept
         {
             impl.value += e.change;
         }
@@ -38,7 +40,7 @@ struct Impl : csm::StatefulObject<Impl>
     struct PrintValue
     {
         template<class Event>
-        void operator()(Impl& impl, const Event& /* e */) const noexcept
+        void operator()(EventsExample& impl, const Event&) const noexcept
         {
             std::cout << impl.value << '\n';
         }
@@ -47,7 +49,7 @@ struct Impl : csm::StatefulObject<Impl>
     struct ResetValue
     {
         template<class Event>
-        void operator()(Impl& impl, const Event& /* e */) const noexcept
+        void operator()(EventsExample& impl, const Event&) const noexcept
         {
             impl.value = 0;
         }
@@ -59,8 +61,8 @@ struct Impl : csm::StatefulObject<Impl>
         ) };
 
     static constexpr auto ActionRules{ csm::MakeActionRules(
-        On<ValueAdd> && IfNone<ValueIs<5>, ValueIs<10>> ||
-        On<ValueAdd2> && If<ValueIs<5>>
+        (On<ValueAdd> && IfNone<ValueIs<5>, ValueIs<10>>) ||
+        (On<ValueAdd2> && If<ValueIs<5>>)
             = Do<ChangeValue, PrintValue>,
         On<ValueReset, EndOfCalc>
             = Do<PrintValue, ResetValue>
@@ -69,14 +71,13 @@ struct Impl : csm::StatefulObject<Impl>
     int value{ 0 };
 };
 
-int main()
+void Use()
 {
-    Impl impl;
-    csm::StateMachine<Impl> sm{ MyState::_1, impl };
+    EventsExample sm{ MyState::_1 };
     sm.ProcessEvent(ValueAdd{ 5 }); // sets value to 5, prints 5
     sm.ProcessEvent(ValueAdd{ 5 }); // event ignored due as !ValueIs<5> condition is not satisfied
     sm.ProcessEvent(ValueAdd2{ 5 }); // sets value to 10, prints 10
     sm.ProcessEvent(ValueReset{}); // prints 10, sets value = 0
-
-    return 0;
 }
+
+}// events_example

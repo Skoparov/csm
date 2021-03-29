@@ -12,49 +12,49 @@ struct Event1 : Event{};
 struct Event2 : Event{};
 struct Event3 : Event{};
 
-struct ActionBase
+struct Action
 {
-    template<class Impl, class Event>
-    void operator()(Impl&, const Event&) const noexcept{}
+    template<class Object, class Event>
+    void operator()(Object&, const Event&) const noexcept{}
 };
 
-struct Action1 : ActionBase{};
-struct Action2 : ActionBase{};
-
-struct DummyImpl{};
+struct Action1 : Action{};
+struct Action2 : Action{};
 
 template<bool V>
 struct Return
 {
-    template<class Impl>
-    bool operator()(Impl&) const noexcept
+    template<class Object>
+    bool operator()(Object&) const noexcept
     {
         return V;
     }
 };
 
+struct DummyObject{};
+
 template<class Pred>
-using Not = csm::detail::Not<DummyImpl, Pred>;
+using Not = csm::detail::Not<Pred>;
 
 template<class... Preds>
-using All = csm::detail::All<DummyImpl, Preds...>;
+using All = csm::detail::All<Preds...>;
 
 template<class... Preds>
-using Any = csm::detail::Any<DummyImpl, Preds...>;
+using Any = csm::detail::Any<Preds...>;
 
 template<class... Preds>
-using None = csm::detail::None<DummyImpl, Preds...>;
+using None = csm::detail::None<Preds...>;
 
 struct HasEnter
 {
-    template<TestState, class Impl, class E>
-    void OnEnter(Impl&, const E&){}
+    template<TestState, class Object, class E>
+    void OnEnter(Object&, const E&){}
 };
 
 struct HasLeave
 {
-    template<TestState, class Impl, class E>
-    void OnLeave(Impl&, const E&){}
+    template<TestState, class Object, class E>
+    void OnLeave(Object&, const E&){}
 };
 
 template<bool V>
@@ -64,7 +64,7 @@ struct WithEvent
     static constexpr bool ContainsEvent{ V };
 };
 
-struct ImplBase : csm::StatefulObject<ImplBase>
+struct StatesBase : csm::SyntaxDefinitions<TestState>
 {
     struct State1 : State<TestState::_1>{};
     struct State2 : State<TestState::_2>{};
@@ -72,62 +72,78 @@ struct ImplBase : csm::StatefulObject<ImplBase>
     struct State4 : State<TestState::_4>{};
 };
 
-struct TableSingle : ImplBase
+template<class T>
+using TestStateMachine = csm::StateMachine<T, TestState, csm::tags::NoSyntaxDefinitions>;
+
+struct TransitionsSingle : StatesBase, TestStateMachine<TransitionsSingle>
 {
-    static constexpr auto Table{ csm::MakeTransitions(
+    using TestStateMachine<TransitionsSingle>::StateMachine;
+
+    static constexpr auto Table{ MakeTransitions(
         From<State1> && On<Event1> = To<State2>
     )};
 };
 
-struct TableMultiple : ImplBase
+struct TransitionsMultiple : StatesBase, TestStateMachine<TransitionsMultiple>
 {
-    static constexpr auto Table{ csm::MakeTransitions(
+    using TestStateMachine<TransitionsMultiple>::StateMachine;
+
+    static constexpr auto Table{ MakeTransitions(
         From<State1, State2> && On<Event1, Event2> = To<State3>
     )};
 };
 
-struct TableOr : ImplBase
+struct TransitionsOr : StatesBase, TestStateMachine<TransitionsOr>
 {
-    static constexpr auto Table{ csm::MakeTransitions(
-        From<State1> && On<Event1> ||
-        From<State2> && On<Event2> ||
-        From<State1> && On<Event3>
+    using TestStateMachine<TransitionsOr>::StateMachine;
+
+    static constexpr auto Table{ MakeTransitions(
+        (From<State1> && On<Event1>) ||
+        (From<State2> && On<Event2>) ||
+        (From<State1> && On<Event3>)
             = To<State3>
     )};
 };
 
-struct TableSeveral : ImplBase
+struct TransitionsSeveral : StatesBase, TestStateMachine<TransitionsSeveral>
 {
-    static constexpr auto Table{ csm::MakeTransitions(
+    using TestStateMachine<TransitionsSeveral>::StateMachine;
+
+    static constexpr auto Table{ MakeTransitions(
         From<State1> && On<Event1> = To<State3>,
         From<State3> && On<Event2> = To<State1>
     )};
 };
 
-struct TableConditions : ImplBase
+struct TransitionsConditions : StatesBase, TestStateMachine<TransitionsConditions>
 {
-    static constexpr auto Table{ csm::MakeTransitions(
-        From<State1> && On<Event1> && If<Return<false>> ||
-        From<State1> && On<Event2>
+    using TestStateMachine<TransitionsConditions>::StateMachine;
+
+    static constexpr auto Table{ MakeTransitions(
+        (From<State1> && On<Event1> && If<Return<false>>) ||
+        (From<State1> && On<Event2>)
             = To<State3>,
-        From<State2> && On<Event1> ||
-        From<State3> && On<Event2> && If<Return<true>>
+        (From<State2> && On<Event1>) ||
+        (From<State3> && On<Event2> && If<Return<true>>)
             = To<State1>,
-        From<State1> && On<Event1> && If<Return<true>> ||
-        From<State3> && On<Event3> && If<Return<false>>
+        (From<State1> && On<Event1> && If<Return<true>>) ||
+        (From<State3> && On<Event3> && If<Return<false>>)
             = To<State2>
     )};
 };
 
-template<class Impl>
-using MakeTable = detail::MakeTransitionTableT<Impl, std::decay_t<decltype(Impl::Table)>>;
+template<class Object>
+using MakeTransitionsPack = csm::detail::MakeTransitionsT<std::decay_t<decltype(Object::Table)>>;
 
-struct TransitionCallbacks : csm::StatefulObject<TransitionCallbacks>
+struct TransitionsCallbacks :
+        csm::StateMachine<TransitionsCallbacks, TestState>
 {
+    using StateMachine<TransitionsCallbacks, TestState>::StateMachine;
+
     struct WithEnter
     {
         template<TestState To, class Event>
-        void OnEnter(TransitionCallbacks& impl,const Event& e)
+        void OnEnter(TransitionsCallbacks& impl, const Event& e)
         {
             impl.enterData.push_back(e.data);
         }
@@ -136,7 +152,7 @@ struct TransitionCallbacks : csm::StatefulObject<TransitionCallbacks>
     struct WithLeave
     {
         template<TestState To, class Event>
-        void OnLeave(TransitionCallbacks& impl,const Event& e)
+        void OnLeave(TransitionsCallbacks& impl, const Event& e)
         {
             impl.leaveData.push_back(e.data);
         }
@@ -147,7 +163,7 @@ struct TransitionCallbacks : csm::StatefulObject<TransitionCallbacks>
     struct State3 : State<TestState::_3>, WithEnter, WithLeave{};
     struct State4 : State<TestState::_4>{};
 
-    static constexpr auto Table{ csm::MakeTransitions(
+    static constexpr auto Table{ MakeTransitions(
         From<State1> && On<Event1> = To<State2>,
         From<State1> && On<Event2> = To<State4>,
         From<State2> && On<Event1> = To<State3>,
@@ -159,12 +175,12 @@ struct TransitionCallbacks : csm::StatefulObject<TransitionCallbacks>
     std::vector<int> leaveData;
 };
 
-template<class Impl>
+template<class StateMachine>
 class SequentialTransitionChecker
 {
 public:
     explicit SequentialTransitionChecker(TestState startState) noexcept
-        : m_sm(startState, m_impl)
+        : m_sm(startState)
         , m_startState(startState)
     {
         REQUIRE(m_sm.GetState() == m_startState);
@@ -199,58 +215,61 @@ public:
 
     SequentialTransitionChecker& SetState(TestState state) noexcept
     {
-        m_sm = StateMachine<Impl>(state, m_impl);
+        m_sm = StateMachine{ state };
         return *this;
     }
 
 private:
-    Impl m_impl;
-    StateMachine<Impl> m_sm;
+    StateMachine m_sm;
     const TestState m_startState;
 };
 
-struct ActionRulesSingle : ImplBase
+struct ActionRulesBase : StatesBase
+{
+    static constexpr auto Table{ MakeTransitions(
+        From<State1> && On<Event1> = To<State2>
+    )};
+};
+
+struct ActionRulesSingle : ActionRulesBase, TestStateMachine<ActionRulesSingle>
 {
     static constexpr auto ActionRules{ csm::MakeActionRules(
         On<Event1> = Do<Action1>
     )};
 };
 
-struct ActionRulesMultiple : ImplBase
+struct ActionRulesMultiple : ActionRulesBase, TestStateMachine<ActionRulesMultiple>
 {
     static constexpr auto ActionRules{ csm::MakeActionRules(
         On<Event1, Event2> = Do<Action1, Action2>
     )};
 };
 
-struct ActionRulesOrAndCondition : ImplBase
-{
+struct ActionRulesOrAndCondition : ActionRulesBase, TestStateMachine<ActionRulesOrAndCondition>
+{   
     static constexpr auto ActionRules{ csm::MakeActionRules(
-        On<Event1, Event2> && If<Return<true>> ||
+        (On<Event1, Event2> && If<Return<true>>) ||
         On<Event3>
             = Do<Action1, Action2>,
         On<Event1, Event2> ||
-        On<Event3> && If<Return<true>>
+        (On<Event3> && If<Return<true>>)
             = Do<Action1, Action2>,
-        On<Event1> && If<Return<true>> ||
-        On<Event2> && If<Return<true>> ||
-        On<Event3> && If<Return<true>>
+        (On<Event1> && If<Return<true>>) ||
+        (On<Event2> && If<Return<true>>) ||
+        (On<Event3> && If<Return<true>>)
             = Do<Action1, Action2>
     )};
 };
 
-template<class Impl>
-using MakeRules = std::decay_t<decltype(Impl::ActionRules)>;
+template<class Object>
+using MakeActionRules = std::decay_t<decltype(Object::ActionRules)>;
 
-struct ActionsImplBase : csm::StatefulObject<ActionsImplBase>
-{
-    struct State1 : State<TestState::_1>{};
-    struct State2 : State<TestState::_2>{};
-
+struct ActionsBase : ActionRulesBase
+{    
     struct Add
     {
         template<class Event>
-        void operator()(ActionsImplBase& impl, const Event& e) const noexcept
+        void operator()(ActionsBase& impl, const Event& e) const noexcept
         {
             impl.data += e.data;
         }
@@ -259,7 +278,7 @@ struct ActionsImplBase : csm::StatefulObject<ActionsImplBase>
     struct Sub
     {
         template<class Event>
-        void operator()(ActionsImplBase& impl, const Event& e) const noexcept
+        void operator()(ActionsBase& impl, const Event& e) const noexcept
         {
             impl.data -= e.data;
         }
@@ -268,43 +287,45 @@ struct ActionsImplBase : csm::StatefulObject<ActionsImplBase>
     struct Mult
     {
         template<class Event>
-        void operator()(ActionsImplBase& impl, const Event& e) const noexcept
+        void operator()(ActionsBase& impl, const Event& e) const noexcept
         {
             impl.data *= e.data;
         }
     };
 
-    static constexpr auto Table{ csm::MakeTransitions(
-        From<State1> && On<Event1> = To<State2>
-    )};
-
     int data{ 0 };
 };
 
-struct ActionsSingle : ActionsImplBase
+struct ActionsSingle : ActionsBase, TestStateMachine<ActionsSingle>
 {
+    using TestStateMachine<ActionsSingle>::StateMachine;
+
     static constexpr auto ActionRules{ csm::MakeActionRules(
         On<Event1> = Do<Add>
     )};
 };
 
-struct ActionsMultiple : ActionsImplBase
+struct ActionsMultiple : ActionsBase, TestStateMachine<ActionsMultiple>
 {
+    using TestStateMachine<ActionsMultiple>::StateMachine;
+
     static constexpr auto ActionRules{ csm::MakeActionRules(
         On<Event1, Event2> = Do<Add, Mult>
     )};
 };
 
-struct ActionsConditions : ActionsImplBase
+struct ActionsConditions : ActionsBase, TestStateMachine<ActionsConditions>
 {
+    using TestStateMachine<ActionsConditions>::StateMachine;
+
     static constexpr auto ActionRules{ csm::MakeActionRules(
-        On<Event1> && If<Return<false>> ||
+        (On<Event1> && If<Return<false>>) ||
         On<Event2>
             = Do<Add, Mult>,
         On<Event1> ||
-        On<Event3> && If<Return<true>>
+        (On<Event3> && If<Return<true>>)
             = Do<Sub>
     )};
 };
 
-}// csm::test
+}// test

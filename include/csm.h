@@ -8,7 +8,7 @@
 namespace csm {
 namespace detail {
 
-struct Dummy;
+struct Dummy{};
 
 template<class T>
 constexpr bool IsInitalized{ !std::is_same_v<T, Dummy> };
@@ -16,34 +16,34 @@ constexpr bool IsInitalized{ !std::is_same_v<T, Dummy> };
 template<class T>
 decltype(std::declval<T>()) As() noexcept;
 
-template<class T, auto To, class Impl, class E, class = void>
+template<class T, auto To, class Object, class E, class = void>
 struct HasOnEnter : std::false_type {};
 
-template<class T, auto To, class Impl, class E>
-struct HasOnEnter<T, To, Impl, E, std::void_t<
-    decltype(As<T>().template OnEnter<To>(As<Impl&>(), As<E>()))>>
+template<class T, auto To, class Object, class E>
+struct HasOnEnter<T, To, Object, E, std::void_t<
+    decltype(As<T>().template OnEnter<To>(As<Object&>(), As<E>()))>>
     : std::true_type
 {
-    using R = decltype(As<T>().template OnEnter<To>(As<Impl&>(), As<E>()));
+    using R = decltype(As<T>().template OnEnter<To>(As<Object&>(), As<E>()));
     static_assert(std::is_same_v<R, void>, "OnEnter() should return void");
 };
 
-template<class T, auto To, class Impl, class E>
-constexpr bool HasOnEnterV{ HasOnEnter<T, To, Impl, E>::value };
+template<class T, auto To, class Object, class E>
+constexpr bool HasOnEnterV{ HasOnEnter<T, To, Object, E>::value };
 
-template<class T, auto To, class Impl, class E, class = void>
+template<class T, auto To, class Object, class E, class = void>
 struct HasOnLeave : std::false_type {};
 
-template<class T, auto To, class Impl, class E>
-struct HasOnLeave<T, To, Impl, E, std::void_t<
-    decltype(As<T>().template OnLeave<To>(As<Impl&>(), As<E>()))>> : std::true_type
+template<class T, auto To, class Object, class E>
+struct HasOnLeave<T, To, Object, E, std::void_t<
+    decltype(As<T>().template OnLeave<To>(As<Object&>(), As<E>()))>> : std::true_type
 {
-    using R = decltype(As<T>().template OnLeave<To>(As<Impl&>(), As<E>()));
+    using R = decltype(As<T>().template OnLeave<To>(As<Object&>(), As<E>()));
     static_assert(std::is_same_v<R, void>, "OnEnter() should return void");
 };
 
-template<class T, auto To, class Impl, class E>
-constexpr bool HasOnLeaveV{ HasOnLeave<T, To, Impl, E>::value };
+template<class T, auto To, class Object, class E>
+constexpr bool HasOnLeaveV{ HasOnLeave<T, To, Object, E>::value };
 
 template<class... T>
 struct HasDups;
@@ -61,7 +61,9 @@ struct HasDups<> : std::false_type {};
 template<class... Ts>
 struct Pack
 {
-    static_assert (!HasDups<Ts...>::value);
+    static_assert (!HasDups<Ts...>::value,
+        "State/event/action packs should not contain duplicates");
+
     static constexpr size_t Size{ sizeof...(Ts) };
 
     template<class T>
@@ -95,99 +97,137 @@ template<class State, class... States>
 struct From : Pack<States...>
 {
     using Type = typename State::Enum;
-    static_assert(std::conjunction_v<std::is_same<Type, typename States::Enum>...>);
+    static_assert(std::conjunction_v<std::is_same<Type, typename States::Enum>...>,
+        "All states should use the same state enum");
 };
 
 template<class... Ts>
 struct TypesCheck
 {
-    static_assert (sizeof...(Ts) > 0);
-    static_assert (!HasDups<Ts...>::value);
+    static_assert(sizeof...(Ts) > 0,
+        "Empty packs of guards/actions not allowed");
+
+    static_assert(!HasDups<Ts...>::value,
+        "Packs of guards/actions should not contain duplicates");
 };
 
-template<class Impl, class... Preds>
-struct PredCheck : TypesCheck<Preds...>
-{
-    static_assert((std::is_invocable_r_v<bool, Preds, Impl&> && ...));
-};
+template<class T>
+struct GuardChecker;
 
-template<class Impl, class... Preds>
-struct If : PredCheck<Impl, Preds...>
+template<template<class...> class T, class... Preds>
+struct GuardChecker<T<Preds...>> : TypesCheck<Preds...>
 {
-    bool operator()(Impl& impl)
+    template<class Object>
+    bool operator()(Object& obj)
     {
-        return (Preds{}(impl) && ...);
+        static_assert((std::is_invocable_r_v<bool, Preds, Object&> && ...),
+            "Guards should implement bool operator()(Object&)");
+
+        return T<Preds...>::Check(obj);
     }
 };
 
-template<class Impl, class... Preds>
-struct Any : PredCheck<Impl, Preds...>
+template<class... Preds>
+struct If : GuardChecker<If<Preds...>>
 {
-    bool operator()(Impl& impl)
+    template<class Object>
+    static bool Check(Object& obj)
     {
-        return (Preds{}(impl) || ...);
+        return (Preds{}(obj) && ...);
     }
 };
 
-template<class Impl, class... Preds>
-struct All : PredCheck<Impl, Preds...>
+template<class... Preds>
+struct Any : GuardChecker<Any<Preds...>>
 {
-    bool operator()(Impl& impl)
+    template<class Object>
+    static bool Check(Object& obj)
     {
-        return (Preds{}(impl) && ...);
+        return (Preds{}(obj) || ...);
     }
 };
 
-template<class Impl, class... Preds>
-struct None : PredCheck<Impl, Preds...>
+template<class... Preds>
+struct All : GuardChecker<All<Preds...>>
 {
-    bool operator()(Impl& impl)
+    template<class Object>
+    static bool Check(Object& obj)
     {
-        return (!Preds{}(impl) && ...);
+        return (Preds{}(obj) && ...);
     }
 };
 
-template<class Impl, class Pred>
-struct Not : PredCheck<Impl, Pred>
+template<class... Preds>
+struct None : GuardChecker<None<Preds...>>
 {
-    bool operator()(Impl& impl)
+    template<class Object>
+    static bool Check(Object& obj)
     {
-        return !Pred{}(impl);
+        return (!Preds{}(obj) && ...);
     }
 };
 
-template<class Impl, class... Actions>
+template<class Pred>
+struct Not : GuardChecker<Not<Pred>>
+{
+    template<class Object>
+    static bool Check(Object& obj)
+    {
+        return !Pred{}(obj);
+    }
+};
+
+template<class... Actions>
 struct Do : TypesCheck<Actions...>
 {
-    template<class Event>
-    void operator()(Impl& impl, const Event& e)
+    template<class Object, class Event>
+    void operator()(Object& obj, const Event& e)
     {
-        static_assert((std::is_invocable_r_v<void, Actions, Impl&, const Event&> && ...));
-        (Actions{}(impl, e), ...);
+        static_assert(
+            (std::is_invocable_r_v<void, Actions, Object&, const Event&> && ...),
+            "Actions should implement void operator()(Object&, const Event&)");
+
+        (Actions{}(obj, e), ...);
     }
 };
 
-template<class Events, class Cond>
-struct EvExpr;
+template<class Action, class ActRule, class... ActRules>
+struct ActRulePack;
 
-template<class Action, class EvExpr, class... EvExprs>
-struct EvExprPack;
+template<class Events, class Cond>
+struct ActRule;
 
 template<class... Events>
 struct On : Pack<Events...>
 {
-    template<class Impl, class... Actions>
-    constexpr auto operator=(Do<Impl, Actions...>) const noexcept
+    template<class... Actions>
+    constexpr auto operator=(Do<Actions...>) const noexcept
     {
-        return EvExprPack<Do<Impl, Actions...>, EvExpr<Pack<Events...>, Dummy>>{};
+        return ActRulePack<Do<Actions...>, ActRule<Pack<Events...>, Dummy>>{};
     }
 };
 
 template<class State>
 struct To {};
 
-template<class ToState, class TrExpr, class... TrExprs>
-struct TrExprPack
+template<class Cond>
+struct AllowedOn
+{
+    template<class Object>
+    static bool IsAllowed(Object& obj)
+    {
+        static_cast<void>(obj);
+        if constexpr(IsInitalized<Cond>)
+        {
+            return Cond{}(obj);
+        }
+
+        return true;
+    }
+};
+
+template<class ToState, class TrRule, class... TrRules>
+struct TrRulePack
 {
     using State = ToState;
 
@@ -195,86 +235,71 @@ struct TrExprPack
     constexpr auto operator=(To<State>) const noexcept
     {
         static_assert(!IsInitalized<ToState>);
-        return TrExprPack<State, TrExpr, TrExprs...>{};
+        return TrRulePack<State, TrRule, TrRules...>{};
     }
 };
 
 template<class FromStates, class OnEvents, class CondPred>
-struct TrExpr;
+struct TrRule;
 
 template<class State, class... States, class... Events, class CondPred>
-struct TrExpr<From<State, States...>, On<Events...>, CondPred>
+struct TrRule<From<State, States...>, On<Events...>, CondPred>
 {
     using Enum = typename State::Enum;
     using Cond = CondPred;
 
-    static_assert((std::is_same_v<Enum, typename States::Enum> && ...));
+    static_assert((std::is_same_v<Enum, typename States::Enum> && ...),
+        "All states should use the smae state enum");
 
     template<class ToState>
     constexpr auto operator=(To<ToState>) const noexcept
     {
-        return TrExprPack<ToState, TrExpr<From<State, States...>, On<Events...>, Cond>>{};
+        return TrRulePack<ToState, TrRule<From<State, States...>, On<Events...>, Cond>>{};
     }
 };
 
-template<class Cond>
-struct AllowedOn
-{
-    template<class Impl>
-    static bool IsAllowed(Impl& impl)
-    {
-        static_cast<void>(impl);
-        if constexpr(IsInitalized<Cond>)
-        {
-            return Cond{}(impl);
-        }
-
-        return true;
-    }
-};
-
-template<class Action, class EvExpr, class... EvExprs>
-struct EvExprPack
+template<class Action, class ActRule, class... ActRules>
+struct ActRulePack
 {
     template<class Event>
     static constexpr bool ContainsEvent{
-        EvExpr::template ContainsEvent<Event> ||
-        (EvExprs:: template ContainsEvent<Event> || ...) };
+        ActRule::template ContainsEvent<Event> ||
+        (ActRules:: template ContainsEvent<Event> || ...) };
 
-    template<class Impl, class... Actions>
-    constexpr auto operator=(Do<Impl, Actions...>) const noexcept
+    template<class... Actions>
+    constexpr auto operator=(Do<Actions...>) const noexcept
     {
-        return EvExprPack<Do<Impl, Actions...>, EvExpr, EvExprs...>{};
+        return ActRulePack<Do<Actions...>, ActRule, ActRules...>{};
     }
 
-    template<class Impl, class Event>
-    static bool Dispatch(Impl& impl, const Event& e)
+    template<class Object, class Event>
+    static bool Dispatch(Object& obj, const Event& e)
     {
         static_assert(IsInitalized<Action>);
-        using ExprsWithEvent = FilterByEvent<Event, EvExpr, EvExprs...>;
-        return DispatchFiltered(impl, e, ExprsWithEvent{});
+        using ActRulesWithEvent = FilterByEvent<Event, ActRule, ActRules...>;
+        return DispatchFiltered(obj, e, ActRulesWithEvent{});
     }
 
 private:
-    template<class Impl, class Event, class... Exprs>
-    static bool DispatchFiltered(Impl& impl, const Event& e, Pack<Exprs...>)
+    template<class Object, class Event, class... Rules>
+    static bool DispatchFiltered(Object& obj, const Event& e, Pack<Rules...>)
     {
-        return (Exprs::template Dispatch<Action>(impl, e) || ...);
+        return (Rules::template Dispatch<Action>(obj, e) || ...);
     }
 };
 
 template<class... Events, class Cond>
-struct EvExpr<Pack<Events...>, Cond>
+struct ActRule<Pack<Events...>, Cond>
 {
     template<class Event>
     static constexpr bool ContainsEvent{ Pack<Events...>::template Contains<Event> };
 
-    template<class Action, class Impl, class Event>
-    static bool Dispatch(Impl& impl, const Event& e)
+    template<class Action, class Object, class Event>
+    static bool Dispatch(Object& obj, const Event& e)
     {
-        if (AllowedOn<Cond>::IsAllowed(impl))
+        if (AllowedOn<Cond>::IsAllowed(obj))
         {
-            Action{}(impl, e);
+            Action{}(obj, e);
             return true;
         }
 
@@ -289,51 +314,54 @@ struct Transition : AllowedOn<Cond>
     using FromState = From;
     using ToState = To;
 
-    static_assert(std::is_same_v<typename From::Enum, typename To::Enum>);
-    static_assert(From::EnumValue != To::EnumValue);
+    static_assert(std::is_same_v<typename From::Enum, typename To::Enum>,
+        "All states should use the same state enum");
+
+    static_assert(From::EnumValue != To::EnumValue,
+        "Source and target state should not be the same");
 
     template<class Event>
     static constexpr bool ContainsEvent{ OnEvents::template Contains<Event> };
 
-    template<class Impl, class Event>
-    static void OnEnter(Impl& impl, const Event& e)
+    template<class Object, class Event>
+    static void OnEnter(Object& obj, const Event& e)
     {
-        static_cast<void>(impl);
+        static_cast<void>(obj);
         static_cast<void>(e);
 
-        if constexpr(HasOnEnterV<To, From::EnumValue, Impl, Event>)
+        if constexpr(HasOnEnterV<To, From::EnumValue, Object, Event>)
         {
-            To{}.template OnEnter<From::EnumValue>(impl, e);
+            To{}.template OnEnter<From::EnumValue>(obj, e);
         }
     }
 
-    template<class Impl, class Event>
-    static void OnLeave(Impl& impl, const Event& e)
+    template<class Object, class Event>
+    static void OnLeave(Object& obj, const Event& e)
     {
-        static_cast<void>(impl);
+        static_cast<void>(obj);
         static_cast<void>(e);
 
-        if constexpr(HasOnLeaveV<From, To::EnumValue, Impl, Event>)
+        if constexpr(HasOnLeaveV<From, To::EnumValue, Object, Event>)
         {
-            From{}.template OnLeave<To::EnumValue>(impl, e);
+            From{}.template OnLeave<To::EnumValue>(obj, e);
         }
     }
 };
 
-template<class StateEnum, class TrPack>
-struct IsValidTrPack;
+template<class StateEnum, class TrRulePack>
+struct IsValidTrRulePack;
 
-template<class StateEnum, class To, class... TrExprs>
-struct IsValidTrPack<StateEnum, TrExprPack<To, TrExprs...>> :
+template<class StateEnum, class To, class... TrRules>
+struct IsValidTrRulePack<StateEnum, TrRulePack<To, TrRules...>> :
     std::conjunction<
         std::is_same<StateEnum, typename To::Enum>,
-        std::conjunction<std::is_same<StateEnum, typename TrExprs::Enum>...>> {};
+        std::conjunction<std::is_same<StateEnum, typename TrRules::Enum>...>> {};
 
 template<class To, class If>
 struct Expand;
 
 template<class To, class... FromStates, class... Events, class CondPred>
-struct Expand<To, TrExpr<From<FromStates...>, On<Events...>, CondPred>>
+struct Expand<To, TrRule<From<FromStates...>, On<Events...>, CondPred>>
 {
     using Type = Pack<Transition<FromStates, To, Pack<Events...>, CondPred>...>;
 };
@@ -342,7 +370,7 @@ template<class T>
 struct ExpandPack;
 
 template<class To, class... IfPack>
-struct ExpandPack<TrExprPack<To, IfPack...>>
+struct ExpandPack<TrRulePack<To, IfPack...>>
 {
     using Type = MergeT<typename Expand<To, IfPack>::Type...>;
 };
@@ -350,168 +378,96 @@ struct ExpandPack<TrExprPack<To, IfPack...>>
 template<class StateEnum, class... Packs>
 struct ExpandPacks
 {
-    static_assert((IsValidTrPack<StateEnum, Packs>::value && ...));
+    static_assert((IsValidTrRulePack<StateEnum, Packs>::value && ...),
+        "All states should use the same state enum");
+
     using Type = MergeT<typename ExpandPack<Packs>::Type...>;
 };
+
+template<class obj>
+struct MakeTransitions;
+
+template<class TrPack, class... TrPacks>
+struct MakeTransitions<Pack<TrPack, TrPacks...>>
+{
+    using State = typename TrPack::State;
+    using StateEnum = typename State::Enum;
+    using Type = typename ExpandPacks<StateEnum, TrPack, TrPacks...>::Type;
+};
+
+template<class T>
+using MakeTransitionsT = typename MakeTransitions<T>::Type;
 
 template<class... States, class... Events>
 constexpr auto operator&&(From<States...>, On<Events...>) noexcept
 {
-    return TrExpr<From<States...>, On<Events...>, Dummy>{};
+    return TrRule<From<States...>, On<Events...>, Dummy>{};
 }
 
-template<class From, class On, class Impl, class... CondPreds>
-constexpr auto operator&&(TrExpr<From, On, Dummy>, If<Impl, CondPreds...>) noexcept
+template<class From, class On, class... CondPreds>
+constexpr auto operator&&(TrRule<From, On, Dummy>, If<CondPreds...>) noexcept
 {
-    return TrExprPack<Dummy, TrExpr<From, On, If<Impl, CondPreds...>>>{};
+    return TrRulePack<Dummy, TrRule<From, On, If<CondPreds...>>>{};
 }
 
 template<class From1, class On1, class Cond1, class From2, class On2, class Cond2>
-constexpr auto operator||(TrExpr<From1, On1, Cond1>, TrExpr<From2, On2, Cond2>) noexcept
+constexpr auto operator||(TrRule<From1, On1, Cond1>, TrRule<From2, On2, Cond2>) noexcept
 {
-    return TrExprPack<Dummy, TrExpr<From1, On1, Cond1>, TrExpr<From2, On2, Cond2>>{};
+    return TrRulePack<Dummy, TrRule<From1, On1, Cond1>, TrRule<From2, On2, Cond2>>{};
 }
 
 template<class... Conds, class From, class On, class Cond>
-constexpr auto operator||(TrExprPack<Dummy, Conds...>, TrExpr<From, On, Cond>) noexcept
+constexpr auto operator||(TrRulePack<Dummy, Conds...>, TrRule<From, On, Cond>) noexcept
 {
-    return TrExprPack<Dummy, Conds..., TrExpr<From, On, Cond>>{};
+    return TrRulePack<Dummy, Conds..., TrRule<From, On, Cond>>{};
 }
 
 template<class... Conds, class From, class On, class Cond>
-constexpr auto operator||(TrExpr<From, On, Cond>, TrExprPack<Dummy, Conds...>) noexcept
+constexpr auto operator||(TrRule<From, On, Cond>, TrRulePack<Dummy, Conds...>) noexcept
 {
-    return TrExprPack<Dummy, TrExpr<From, On, Cond>, Conds...>{};
+    return TrRulePack<Dummy, TrRule<From, On, Cond>, Conds...>{};
 }
 
 template<class... Conds1, class... Conds2>
-constexpr auto operator||(TrExprPack<Dummy, Conds1...>, TrExprPack<Dummy, Conds2...> ) noexcept
+constexpr auto operator||(TrRulePack<Dummy, Conds1...>, TrRulePack<Dummy, Conds2...> ) noexcept
 {
-    return TrExprPack<Dummy, Conds1..., Conds2...>{};
+    return TrRulePack<Dummy, Conds1..., Conds2...>{};
 }
 
-template<class... Events, class Impl, class... CondPreds>
-constexpr auto operator&&(On<Events...>, If<Impl, CondPreds...>) noexcept
+template<class... Events, class... CondPreds>
+constexpr auto operator&&(On<Events...>, If<CondPreds...>) noexcept
 {
-    return EvExprPack<Dummy, EvExpr<Pack<Events...>, If<Impl, CondPreds...>>>{};
+    return ActRulePack<Dummy, ActRule<Pack<Events...>, If<CondPreds...>>>{};
 }
 
-template<class... EvExprs1, class... EvExprs2>
-constexpr auto operator||(EvExprPack<Dummy, EvExprs1...>, EvExprPack<Dummy, EvExprs2...>) noexcept
+template<class... ActRules1, class... ActRules2>
+constexpr auto operator||(ActRulePack<Dummy, ActRules1...>, ActRulePack<Dummy, ActRules2...>) noexcept
 {
-    return EvExprPack<Dummy, EvExprs1..., EvExprs2...>{};
+    return ActRulePack<Dummy, ActRules1..., ActRules2...>{};
 }
 
-template<class... Events, class... EvExprs>
-constexpr auto operator||(On<Events...>, EvExprPack<Dummy, EvExprs...> pack) noexcept
+template<class... Events, class... ActRules>
+constexpr auto operator||(On<Events...>, ActRulePack<Dummy, ActRules...> pack) noexcept
 {
-    return EvExprPack<Dummy, EvExpr<Pack<Events...>, Dummy>>{} || pack;
+    return ActRulePack<Dummy, ActRule<Pack<Events...>, Dummy>>{} || pack;
 }
 
-template<class... Events, class... EvExprs>
-constexpr auto operator||(EvExprPack<Dummy, EvExprs...> pack, On<Events...> on) noexcept
+template<class... Events, class... ActRules>
+constexpr auto operator||(ActRulePack<Dummy, ActRules...> pack, On<Events...> on) noexcept
 {
     return on || pack;
 }
 
-template<class State, class Transitions>
-struct Table;
-
-template<class T, class Transitions>
-struct MakeTransitionTable;
-
-template<class T, class TrPack, class... TrPacks>
-struct MakeTransitionTable<T, Pack<TrPack, TrPacks...>>
-{
-    using State = typename TrPack::State;
-    using StateEnum = typename State::Enum;
-    using Transitions = typename ExpandPacks<StateEnum, TrPack, TrPacks...>::Type;
-    using Type = Table<StateEnum, Transitions>;
-};
-
-template<class T, class Table>
-using MakeTransitionTableT = typename MakeTransitionTable<T, Table>::Type;
-
-template<class Table, class EvExprs, class Impl>
-class EventProcessor;
-
-template<class StateEnumType, class... Transitions, class... EvExprPacks, class Impl>
-class EventProcessor<Table<StateEnumType, Pack<Transitions...>>, Pack<EvExprPacks...>, Impl>
-{
-public:
-    using StateEnum = StateEnumType;
-
-public:
-    EventProcessor(StateEnum startState, Impl& impl) noexcept
-        : m_state(startState)
-        , m_impl(&impl)
-    {}
-
-    template<class Event>
-    void ProcessEvent(const Event& e)
-    {
-        static_cast<void>(e);
-
-        using PossibleEventsExpressions = FilterByEvent<Event, EvExprPacks...>;
-        if constexpr(PossibleEventsExpressions::Size > 0)
-        {
-            CallEventActions(e, PossibleEventsExpressions{});
-        }
-
-        using PossibleTransitions = FilterByEvent<Event, Transitions...>;
-        if constexpr(PossibleTransitions::Size > 0)
-        {
-            ProcessTransitions(e, PossibleTransitions{});
-        }
-    }
-
-    StateEnum GetState() const noexcept
-    {
-        return m_state;
-    }
-
-private:
-    template<class Event, class... EvPacks>
-    void CallEventActions(const Event& e, Pack<EvPacks...>)
-    {
-        static_cast<void>((EvPacks::Dispatch(*m_impl, e) || ...));
-    }
-
-    template<class Event, class Tr, class... Trs>
-    void ProcessTransitions(const Event& e, Pack<Tr, Trs...>)
-    {
-        using From = typename Tr::FromState;
-        using To = typename Tr::ToState;
-
-        if (m_state == From::EnumValue && Tr::IsAllowed(*m_impl))
-        {
-            m_state = To::EnumValue;
-            Tr::OnLeave(*m_impl, e);
-            Tr::OnEnter(*m_impl, e);
-            return;
-        }
-
-        if constexpr(sizeof...(Trs) != 0)
-        {
-            ProcessTransitions(e, Pack<Trs...>{});
-        }
-    }
-
-private:
-    StateEnum m_state;
-    Impl* m_impl;
-};
-
 }//detail
 
-template<class Impl>
-struct StatefulObject
+template<class StateEnum>
+struct SyntaxDefinitions
 {
-    template<auto V>
+    template<StateEnum V>
     struct State
     {
-        using Enum = decltype(V);
-        static constexpr auto EnumValue{ V };
+        using Enum = StateEnum;
+        static constexpr StateEnum EnumValue{ V };
     };
 
     template<class... FromStates>
@@ -524,82 +480,137 @@ struct StatefulObject
     static constexpr detail::To<ToState> To{};
 
     template<class... Preds>
-    static constexpr detail::If<Impl, Preds...> If{};
+    static constexpr detail::If<Preds...> If{};
 
     template<class... Preds>
-    using Any = detail::Any<Impl, Preds...>;
+    using Any = detail::Any<Preds...>;
 
     template<class... Preds>
-    using All = detail::All<Impl, Preds...>;
+    using All = detail::All<Preds...>;
 
     template<class... Preds>
-    using None = detail::None<Impl, Preds...>;
+    using None = detail::None<Preds...>;
 
     template<class Pred>
-    using Not = detail::Not<Impl, Pred>;
+    using Not = detail::Not<Pred>;
 
     template<class... Preds>
-    static constexpr detail::If<Impl, Any<Preds...>> IfAny{};
+    static constexpr detail::If<Any<Preds...>> IfAny{};
 
     template<class... Preds>
-    static constexpr detail::If<Impl, None<Preds...>> IfNone{};
+    static constexpr detail::If<None<Preds...>> IfNone{};
 
     template<class Pred>
-    static constexpr detail::If<Impl, Not<Pred>> IfNot{};
+    static constexpr detail::If<Not<Pred>> IfNot{};
 
     template<class... Preds>
-    static constexpr detail::Do<Impl, Preds...> Do{};
+    static constexpr detail::Do<Preds...> Do{};
 };
 
-template<class Impl>
-class StateMachine
+namespace tags
 {
-    template<class T, class = void>
-    struct EvExprs{ using Type = detail::Pack<>; };
 
-    template<class T>
-    struct EvExprs<T, std::void_t<decltype(T::ActionRules)>>
-    {
-        using Type = std::decay_t<decltype(T::ActionRules)>;
-    };
+struct NoSyntaxDefinitions;
 
-    using Processor = detail::EventProcessor<
-        detail::MakeTransitionTableT<Impl, std::decay_t<decltype(Impl::Table)>>,
-        typename EvExprs<Impl>::Type,
-        Impl>;
+}// tags
 
-    using StateEnum = typename Processor::StateEnum;
-    static_assert(std::is_enum_v<StateEnum>);
-
+template<class Object, class StateEnum, class... Tags>
+class StateMachine : public
+    std::conditional_t<
+        detail::Pack<Tags...>::template Contains<tags::NoSyntaxDefinitions>,
+        detail::Dummy,
+        SyntaxDefinitions<StateEnum>>
+{
 public:
-    StateMachine(StateEnum startState, Impl& impl) noexcept
-        : m_processor(startState, impl) {}
+    StateMachine(StateEnum startState) noexcept
+        : m_state(startState)
+    {}
 
     template<class Event>
     void ProcessEvent(const Event& e)
     {
-        m_processor.template ProcessEvent<Event>(e);
+        using UnexpandedTable = std::decay_t<decltype(Object::Table)>;
+        using TransitionTable = detail::MakeTransitionsT<UnexpandedTable>;
+        using ActRulesTable = typename MakeActionRules<Object>::Type;
+
+        ProcessEventInternal(e, TransitionTable{}, ActRulesTable{});
     }
 
-    StateEnum GetState() const noexcept
+    auto GetState() const noexcept
     {
-        return m_processor.GetState();
+        return m_state;
     }
 
 private:
-    Processor m_processor;
+    template<class Event, class... Transitions, class... ActionRules>
+    void ProcessEventInternal(const Event& e, detail::Pack<Transitions...>, detail::Pack<ActionRules...>)
+    {
+        static_cast<void>(e);
+
+        using PossibleActionRules = detail::FilterByEvent<Event, ActionRules...>;
+        if constexpr(PossibleActionRules::Size > 0)
+        {
+            CallEventActions(e, PossibleActionRules{});
+        }
+
+        using PossibleTransitions = detail::FilterByEvent<Event, Transitions...>;
+        if constexpr(PossibleTransitions::Size > 0)
+        {
+            ProcessTransitions(e, PossibleTransitions{});
+        }
+    }
+
+    template<class Event, class... ActRules>
+    void CallEventActions(const Event& e, detail::Pack<ActRules...>)
+    {
+        static_cast<void>((ActRules::Dispatch(static_cast<Object&>(*this), e) || ...));
+    }
+
+    template<class Event, class Transition, class... Transitions>
+    void ProcessTransitions(const Event& e, detail::Pack<Transition, Transitions...>)
+    {
+        using From = typename Transition::FromState;
+        using To = typename Transition::ToState;
+        Object& obj{ static_cast<Object&>(*this) };
+
+        if (m_state == From::EnumValue && Transition::IsAllowed(obj))
+        {
+            m_state = To::EnumValue;
+            Transition::OnLeave(obj, e);
+            Transition::OnEnter(obj, e);
+            return;
+        }
+
+        if constexpr(sizeof...(Transitions) != 0)
+        {
+            ProcessTransitions(e, detail::Pack<Transitions...>{});
+        }
+    }
+
+private:
+    template<class T, class = void>
+    struct MakeActionRules{ using Type = detail::Pack<>; };
+
+    template<class T>
+    struct MakeActionRules<T, std::void_t<decltype(T::ActionRules)>>
+    {
+        using Type = std::decay_t<decltype(T::ActionRules)>;
+    };
+
+private:
+    StateEnum m_state;
 };
 
-template<class... T>
-constexpr auto MakeTransitions(T&&...) noexcept
+template<class... TransitionRules>
+constexpr auto MakeTransitions(TransitionRules&&...) noexcept
 {
-    return detail::Pack<std::decay_t<T>...>{};
+    return detail::Pack<std::decay_t<TransitionRules>...>{};
 }
 
-template<class... T>
-constexpr auto MakeActionRules(T&&...) noexcept
+template<class... ActionRules>
+constexpr auto MakeActionRules(ActionRules&&...) noexcept
 {
-    return detail::Pack<std::decay_t<T>...>{};
+    return detail::Pack<std::decay_t<ActionRules>...>{};
 }
 
 }// csm

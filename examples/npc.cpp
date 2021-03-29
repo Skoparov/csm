@@ -10,6 +10,8 @@
 // with the state changing accodringly
 // Health determines the phisical state of the npc, if it reaches 0 they die.
 
+namespace npc_example{
+
 // Public state enum used by external entities
 enum class NpcState{ Friendly, Neutral, Disgruntled, Hostile, Dead };
 
@@ -27,23 +29,26 @@ struct Attack{ int damage; };
 struct PleadForMercy{};
 struct Wave{};
 
-class Npc : csm::StatefulObject<Npc>
+class Npc : public csm::StateMachine<Npc, NpcState>
 {
-    friend class csm::StateMachine<Npc>;
+    friend class csm::StateMachine<Npc, NpcState>;
     using Health = int;
     using Attitude = int;
+
+public:
+    using csm::StateMachine<Npc, NpcState>::StateMachine;
 
 private: // States
     struct Friendly : State<NpcState::Friendly>
     {
         template<NpcState From, class Event>
-        void OnEnter(Npc& /* npc */, const Event& /* e */) const noexcept
+        void OnEnter(Npc&, const Event&) const noexcept
         {
             std::cout << "Hi new friend :)\n";
         }
 
         template<NpcState To, class Event, std::enable_if_t<To != NpcState::Dead>...>
-        void OnLeave(Npc& /* npc */, const Event& /* e */) const noexcept
+        void OnLeave(Npc&, const Event&) const noexcept
         {
             std::cout << "But I thought we were friends :(\n";
         }
@@ -54,7 +59,7 @@ private: // States
     struct Disgruntled : State<NpcState::Disgruntled>
     {
         template<NpcState From, class Event>
-        void OnEnter(Npc& npc, const Event& /* e */) noexcept
+        void OnEnter(Npc& npc, const Event&) noexcept
         {
             if (From == NpcState::Hostile)
             {
@@ -70,7 +75,7 @@ private: // States
     struct Hostile : State<NpcState::Hostile>
     {
         template<NpcState From, class Event>
-        void OnEnter(Npc& /* npc */, const Event& /* e */) noexcept
+        void OnEnter(Npc&, const Event&) noexcept
         {
             std::cout << "Never should've come here!\n";
         }
@@ -79,7 +84,7 @@ private: // States
     struct Dead : State<NpcState::Dead>
     {
         template<NpcState From, class Event>
-        void OnEnter(Npc& npc, const Event& /* e */) noexcept
+        void OnEnter(Npc& npc, const Event&) noexcept
         {
             std::cout << "Arghhh!!!\n";
             npc.m_attitude = 0;
@@ -98,7 +103,7 @@ private: // Actions
     struct React
     {
         template<class Event>
-        void operator()(Npc& /* npc */, const Event& /* event */) const noexcept
+        void operator()(Npc&, const Event&) const noexcept
         {
             if constexpr(std::is_same_v<Event, Compliment>)
             {
@@ -175,11 +180,11 @@ private:
             = To<Friendly>,
         From<Friendly, Disgruntled> && On<Compliment, Bribe, Insult, Shove> && If<IsAttitudeNeutral>
             = To<Neutral>,
-        From<Friendly, Neutral> && On<Insult, Shove> && If<IsAttitudeDisgruntled> ||
-        From<Hostile> && On<PleadForMercy>
+        (From<Friendly, Neutral> && On<Insult, Shove> && If<IsAttitudeDisgruntled>) ||
+        (From<Hostile> && On<PleadForMercy>)
             = To<Disgruntled>,
-        From<Friendly, Neutral, Disgruntled> && On<Insult, Shove> && If<IsAttitudeHostile> ||
-        From<Friendly, Neutral, Disgruntled> && On<Attack> && IfNot<IsDead>
+        (From<Friendly, Neutral, Disgruntled> && On<Insult, Shove> && If<IsAttitudeHostile>) ||
+        (From<Friendly, Neutral, Disgruntled> && On<Attack> && IfNot<IsDead>)
             = To<Hostile>,
         From<Friendly, Neutral, Disgruntled, Hostile> && On<Attack> && If<IsDead>
             = To<Dead>
@@ -190,7 +195,7 @@ private:
             = Do<ChangeAttitude, React>,
         On<Attack> && IfNot<IsDead>
             = Do<DealDamage, React>,
-        On<PleadForMercy> && IfAll<Not<IsDead>, IsAttitudeHostile> ||
+        (On<PleadForMercy> && If<Not<IsDead>, IsAttitudeHostile>) ||
         On<Wave>
             = Do<React>
         ) };
@@ -200,27 +205,26 @@ private:
     Attitude m_attitude{ 10 };
 };
 
-int main()
+void Use()
 {
     // Health: 10 | Attitude: 10 | State:  Friendly
-    Npc npc;
-    csm::StateMachine<Npc> sm{ NpcState::Friendly, npc };
+    Npc sm{ NpcState::Friendly };
 
     // Health: 10 | Attitude: 7 | State: Neutral
     // Says "Why would you say that?!" and "But I thought we were friends :("
-    sm.ProcessEvent(Insult{ -3 });
+    sm.ProcessEvent(Insult{ {-3} });
 
     // Health: 10 | Attitude: 6 | State: Neutral
     // Says "Stop pushing me!"
-    sm.ProcessEvent(Shove{ -1 });
+    sm.ProcessEvent(Shove{ {-1} });
 
     // Health: 10 | Attitude: 1 | State: Disgruntled
     // Says "Stop pushing me!" and "I hate you!"
-    sm.ProcessEvent(Shove{ -5 });
+    sm.ProcessEvent(Shove{ {-5} });
 
     // Health: 10 | Attitude: 0 | State: Hostile
     // Says "Why would you say that?!" and "Never should've come here!"
-    sm.ProcessEvent(Insult{ -3 });
+    sm.ProcessEvent(Insult{ {-3} });
 
     // Health: 5 | Attitude: 0 | State: Hostile
     // Says "Ouch!"
@@ -228,7 +232,7 @@ int main()
 
     // Health: 5 | Attitude: 0 | State: Hostile
     // No reaction due to conditions
-    sm.ProcessEvent(Insult{ -3 });
+    sm.ProcessEvent(Insult{ {-3} });
 
     // Health: 5 | Attitude: 1 | State: Disgruntled
     // Says "I'll spare you...this time."
@@ -236,11 +240,11 @@ int main()
 
     // Health: 5 | Attitude: 11 | State: Friendly
     // Says "Oh, thanks!" and "Hi new friend :)"
-    sm.ProcessEvent(Compliment{ 10 });
+    sm.ProcessEvent(Compliment{ {10} });
 
     // Health: 0 | Attitude: 0 | State: Dead
     // Says "Ouch!" and "Arghhh!!! :("
     sm.ProcessEvent(Attack{ 5 });
-
-    return 0;
 }
+
+}// npc_example
