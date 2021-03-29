@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(include_dirs
-    test_helpers.h
-    tests.cpp)
+    ../include
+    ../lib)
 
 set(sources
     test_helpers.h

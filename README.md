@@ -45,7 +45,7 @@ The library is header-only, simply copy the header into your project's directory
 ## Wiki
 * [General Overview](https://github.com/Skoparov/csm/wiki/General-overview)
 * [Concepts](https://github.com/Skoparov/csm/wiki/Concepts)
-  * [Stateful object](https://github.com/Skoparov/csm/wiki/Concepts/#stateful-object)
+  * [Syntax definitions](https://github.com/Skoparov/csm/wiki/Concepts/#syntax-definitions)
   * [State](https://github.com/Skoparov/csm/wiki/Concepts/#state)
   * [Event](https://github.com/Skoparov/csm/wiki/Concepts/#event)
   * [Guard](https://github.com/Skoparov/csm/wiki/Concepts/#guard)
@@ -66,7 +66,7 @@ enum class SwitchState{ On, Off, Broken };
 struct Press{};
 struct Smash{};
 
-struct Switch : csm::StatefulObject<Switch>
+struct Switch : csm::StateMachine<Switch, SwitchState>
 {
     // Internal states
     struct StateOn : State<SwitchState::On>{};
@@ -99,8 +99,7 @@ struct Switch : csm::StatefulObject<Switch>
 
 void UseSwitch()
 {
-    Switch switchObj;
-    csm::StateMachine<Switch> sm{ SwitchState::Off, switchObj };
+    Switch sm{ SwitchState::Off };
 
     sm.ProcessEvent(Press{}); // Off -> On
     auto currState{ sm.GetState() }; // On
@@ -113,4 +112,4 @@ void UseSwitch()
 }
 ```
 
-For more code samples please refer to [examples](https://github.com/Skoparov/csm/tree/main/examples)
+For more code examples please refer to [examples](https://github.com/Skoparov/csm/tree/main/examples)
