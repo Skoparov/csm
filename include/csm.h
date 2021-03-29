@@ -529,7 +529,7 @@ public:
     template<class Event>
     void ProcessEvent(const Event& e)
     {
-        using UnexpandedTable = std::decay_t<decltype(Object::Table)>;
+        using UnexpandedTable = std::decay_t<decltype(Object::TransitionRules)>;
         using TransitionTable = detail::MakeTransitionsT<UnexpandedTable>;
         using ActRulesTable = typename MakeActionRules<Object>::Type;
 
@@ -602,7 +602,7 @@ private:
 };
 
 template<class... TransitionRules>
-constexpr auto MakeTransitions(TransitionRules&&...) noexcept
+constexpr auto MakeTransitionRules(TransitionRules&&...) noexcept
 {
     return detail::Pack<std::decay_t<TransitionRules>...>{};
 }

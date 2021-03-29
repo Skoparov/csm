@@ -47,7 +47,7 @@ struct StateExample : csm::StateMachine<StateExample, MyState>
     };
 
     // Transition table
-    static constexpr auto Table{ csm::MakeTransitions(
+    static constexpr auto TransitionRules{ csm::MakeTransitionRules(
              From<State1> && On<Event1, Event2>
                     = To<State2>,
              (From<State2, State3> && On<Event1>) ||

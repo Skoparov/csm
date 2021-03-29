@@ -175,7 +175,7 @@ private: // Traits
     using IsAttitudeHostile = AttittudeFits<NpcState::Hostile>;
 
 private:
-    static constexpr auto Table{ csm::MakeTransitions(
+    static constexpr auto TransitionRules{ csm::MakeTransitionRules(
         From<Neutral, Disgruntled> && On<Compliment, Bribe> && If<IsAttitudeFriendly>
             = To<Friendly>,
         From<Friendly, Disgruntled> && On<Compliment, Bribe, Insult, Shove> && If<IsAttitudeNeutral>

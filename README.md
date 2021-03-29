@@ -84,7 +84,7 @@ struct Switch : csm::StateMachine<Switch, SwitchState>
     };
 
     // Transition table and action rules
-    static constexpr auto Table{ csm::MakeTransitions(
+    static constexpr auto TransitionRules{ csm::MakeTransitionRules(
         From<StateOn> && On<Press> && IfNot<IsBroken> = To<StateOff>,
         From<StateOff> && On<Press> && IfNot<IsBroken> = To<StateOn>,
         From<StateOn, StateOff> && On<Smash> = To<StateBroken>

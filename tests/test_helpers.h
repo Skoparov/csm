@@ -79,7 +79,7 @@ struct TransitionsSingle : StatesBase, TestStateMachine<TransitionsSingle>
 {
     using TestStateMachine<TransitionsSingle>::StateMachine;
 
-    static constexpr auto Table{ MakeTransitions(
+    static constexpr auto TransitionRules{ MakeTransitionRules(
         From<State1> && On<Event1> = To<State2>
     )};
 };
@@ -88,7 +88,7 @@ struct TransitionsMultiple : StatesBase, TestStateMachine<TransitionsMultiple>
 {
     using TestStateMachine<TransitionsMultiple>::StateMachine;
 
-    static constexpr auto Table{ MakeTransitions(
+    static constexpr auto TransitionRules{ MakeTransitionRules(
         From<State1, State2> && On<Event1, Event2> = To<State3>
     )};
 };
@@ -97,7 +97,7 @@ struct TransitionsOr : StatesBase, TestStateMachine<TransitionsOr>
 {
     using TestStateMachine<TransitionsOr>::StateMachine;
 
-    static constexpr auto Table{ MakeTransitions(
+    static constexpr auto TransitionRules{ MakeTransitionRules(
         (From<State1> && On<Event1>) ||
         (From<State2> && On<Event2>) ||
         (From<State1> && On<Event3>)
@@ -109,7 +109,7 @@ struct TransitionsSeveral : StatesBase, TestStateMachine<TransitionsSeveral>
 {
     using TestStateMachine<TransitionsSeveral>::StateMachine;
 
-    static constexpr auto Table{ MakeTransitions(
+    static constexpr auto TransitionRules{ MakeTransitionRules(
         From<State1> && On<Event1> = To<State3>,
         From<State3> && On<Event2> = To<State1>
     )};
@@ -119,7 +119,7 @@ struct TransitionsConditions : StatesBase, TestStateMachine<TransitionsCondition
 {
     using TestStateMachine<TransitionsConditions>::StateMachine;
 
-    static constexpr auto Table{ MakeTransitions(
+    static constexpr auto TransitionRules{ MakeTransitionRules(
         (From<State1> && On<Event1> && If<Return<false>>) ||
         (From<State1> && On<Event2>)
             = To<State3>,
@@ -133,7 +133,7 @@ struct TransitionsConditions : StatesBase, TestStateMachine<TransitionsCondition
 };
 
 template<class Object>
-using MakeTransitionsPack = csm::detail::MakeTransitionsT<std::decay_t<decltype(Object::Table)>>;
+using MakeTransitionsPack = csm::detail::MakeTransitionsT<std::decay_t<decltype(Object::TransitionRules)>>;
 
 struct TransitionsCallbacks :
         csm::StateMachine<TransitionsCallbacks, TestState>
@@ -163,7 +163,7 @@ struct TransitionsCallbacks :
     struct State3 : State<TestState::_3>, WithEnter, WithLeave{};
     struct State4 : State<TestState::_4>{};
 
-    static constexpr auto Table{ MakeTransitions(
+    static constexpr auto TransitionRules{ MakeTransitionRules(
         From<State1> && On<Event1> = To<State2>,
         From<State1> && On<Event2> = To<State4>,
         From<State2> && On<Event1> = To<State3>,
@@ -226,7 +226,7 @@ private:
 
 struct ActionRulesBase : StatesBase
 {
-    static constexpr auto Table{ MakeTransitions(
+    static constexpr auto TransitionRules{ MakeTransitionRules(
         From<State1> && On<Event1> = To<State2>
     )};
 };
