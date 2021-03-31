@@ -25,7 +25,7 @@ template<bool V>
 struct Return
 {
     template<class Object>
-    bool operator()(Object&) const noexcept
+    bool operator()(const Object&) const noexcept
     {
         return V;
     }
@@ -328,4 +328,4 @@ struct ActionsConditions : ActionsBase, TestStateMachine<ActionsConditions>
     )};
 };
 
-}// test
+}// csm::test

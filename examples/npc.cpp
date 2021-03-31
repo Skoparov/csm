@@ -1,5 +1,4 @@
 #include <csm.h>
-#include <array>
 #include <cassert>
 #include <iostream>
 
@@ -42,13 +41,13 @@ private: // States
     struct Friendly : State<NpcState::Friendly>
     {
         template<NpcState From, class Event>
-        void OnEnter(Npc&, const Event&) const noexcept
+        void OnEnter(Npc&, const Event&) const
         {
             std::cout << "Hi new friend :)\n";
         }
 
         template<NpcState To, class Event, std::enable_if_t<To != NpcState::Dead>...>
-        void OnLeave(Npc&, const Event&) const noexcept
+        void OnLeave(Npc&, const Event&) const
         {
             std::cout << "But I thought we were friends :(\n";
         }
@@ -59,7 +58,7 @@ private: // States
     struct Disgruntled : State<NpcState::Disgruntled>
     {
         template<NpcState From, class Event>
-        void OnEnter(Npc& npc, const Event&) noexcept
+        void OnEnter(Npc& npc, const Event&)
         {
             if (From == NpcState::Hostile)
             {
@@ -75,7 +74,7 @@ private: // States
     struct Hostile : State<NpcState::Hostile>
     {
         template<NpcState From, class Event>
-        void OnEnter(Npc&, const Event&) noexcept
+        void OnEnter(Npc&, const Event&)
         {
             std::cout << "Never should've come here!\n";
         }
@@ -84,7 +83,7 @@ private: // States
     struct Dead : State<NpcState::Dead>
     {
         template<NpcState From, class Event>
-        void OnEnter(Npc& npc, const Event&) noexcept
+        void OnEnter(Npc& npc, const Event&)
         {
             std::cout << "Arghhh!!!\n";
             npc.m_attitude = 0;
@@ -103,7 +102,7 @@ private: // Actions
     struct React
     {
         template<class Event>
-        void operator()(Npc&, const Event&) const noexcept
+        void operator()(Npc&, const Event&) const
         {
             if constexpr(std::is_same_v<Event, Compliment>)
             {
@@ -147,7 +146,7 @@ private: // Actions
 private: // Traits
     struct IsDead
     {
-        bool operator()(Npc& npc) const noexcept
+        bool operator()(const Npc& npc) const noexcept
         {
             return npc.m_health == 0;
         }
@@ -156,7 +155,7 @@ private: // Traits
     template<NpcState State>
     struct AttittudeFits
     {
-        bool operator()(Npc& npc) const noexcept
+        bool operator()(const Npc& npc) const noexcept
         {
             switch (State)
             {

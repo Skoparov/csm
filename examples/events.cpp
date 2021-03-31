@@ -21,7 +21,7 @@ struct EventsExample : csm::StateMachine<EventsExample, MyState>
     template<int Val>
     struct ValueIs
     {
-        bool operator()(EventsExample& impl) const noexcept
+        bool operator()(const EventsExample& impl) const noexcept
         {
             return impl.value == Val;
         }
@@ -40,7 +40,7 @@ struct EventsExample : csm::StateMachine<EventsExample, MyState>
     struct PrintValue
     {
         template<class Event>
-        void operator()(EventsExample& impl, const Event&) const noexcept
+        void operator()(EventsExample& impl, const Event&) const
         {
             std::cout << impl.value << '\n';
         }

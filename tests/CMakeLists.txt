@@ -10,6 +10,7 @@ set(include_dirs
     ../lib)
 
 set(sources
+    ../include/csm.h
     test_helpers.h
     tests.cpp)
 

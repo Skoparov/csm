@@ -32,7 +32,7 @@ struct StateExample : csm::StateMachine<StateExample, MyState>
     // Traits
     struct AlwaysTrue
     {
-        bool operator()(StateExample&) const noexcept
+        bool operator()(const StateExample&) const noexcept
         {
             return true;
         }
@@ -40,7 +40,7 @@ struct StateExample : csm::StateMachine<StateExample, MyState>
 
     struct IfValue
     {
-        bool operator()(StateExample& impl) const noexcept
+        bool operator()(const StateExample& impl) const noexcept
         {
             return impl.value;
         }
