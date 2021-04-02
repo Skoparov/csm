@@ -472,6 +472,9 @@ constexpr auto operator||(ActRulePack<Dummy, ActRules...> pack, On<Events...> on
 template<class StateEnum>
 struct SyntaxDefinitions
 {
+    static_assert (std::is_enum_v<StateEnum>,
+        "External states should be declared as enums");
+
     template<StateEnum V>
     struct State
     {
@@ -530,8 +533,11 @@ class StateMachine : public
         detail::Dummy,
         SyntaxDefinitions<StateEnum>>
 {
+    static_assert (std::is_enum_v<StateEnum>,
+        "External states should be declared as enums");
+
 public:
-    StateMachine(StateEnum startState) noexcept
+    explicit StateMachine(StateEnum startState) noexcept
         : m_state(startState)
     {}
 
@@ -545,7 +551,7 @@ public:
         ProcessEventInternal(e, TransitionTable{}, ActRulesTable{});
     }
 
-    auto GetState() const noexcept
+    StateEnum GetState() const noexcept
     {
         return m_state;
     }
