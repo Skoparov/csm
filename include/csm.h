@@ -338,15 +338,16 @@ struct Transition : AllowedOn<Cond>
 
         if (currState == From::EnumValue && AllowedOn<Cond>::IsAllowed(obj))
         {
-            currState = To::EnumValue;
-            if constexpr(HasOnEnterV<To, From::EnumValue, std::decay_t<Object>, Event>)
-            {
-                To{}.template OnEnter<From::EnumValue>(obj, e);
-            }
-
             if constexpr(HasOnLeaveV<From, To::EnumValue, Object, Event>)
             {
                 From{}.template OnLeave<To::EnumValue>(obj, e);
+            }
+
+            currState = To::EnumValue;
+
+            if constexpr(HasOnEnterV<To, From::EnumValue, std::decay_t<Object>, Event>)
+            {
+                To{}.template OnEnter<From::EnumValue>(obj, e);
             }
 
             return true;

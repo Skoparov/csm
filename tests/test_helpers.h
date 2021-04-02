@@ -135,6 +135,57 @@ struct TransitionsConditions : StatesBase, TestStateMachine<TransitionsCondition
 template<class Object>
 using MakeTransitionsPack = csm::detail::MakeTransitionsT<std::decay_t<decltype(Object::TransitionRules)>>;
 
+struct TransitionsCallbackSequenceCheck :
+        csm::StateMachine<TransitionsCallbackSequenceCheck, TestState>
+{
+    TransitionsCallbackSequenceCheck()
+        : StateMachine<TransitionsCallbackSequenceCheck, TestState>(TestState::_1)
+    {}
+
+    struct State1 : State<TestState::_1>
+    {
+        template<TestState From, class Event>
+        void OnEnter(TransitionsCallbackSequenceCheck&, const Event&)
+        {
+            REQUIRE(false);
+        }
+
+        template<TestState To>
+        void OnLeave(TransitionsCallbackSequenceCheck& obj, const Event1&)
+        {
+            REQUIRE((!obj.enterCalled && !obj.leaveCalled));
+            obj.leaveCalled = true;
+            REQUIRE(To == TestState::_2);
+            REQUIRE(obj.GetState() == TestState::_1);
+        }
+    };
+
+    struct State2 : State<TestState::_2>
+    {
+        template<TestState From>
+        void OnEnter(TransitionsCallbackSequenceCheck& obj, const Event1&)
+        {
+            REQUIRE((!obj.enterCalled && obj.leaveCalled));
+            obj.enterCalled = true;
+            REQUIRE(From == TestState::_1);
+            REQUIRE(obj.GetState() == TestState::_2);
+        }
+
+        template<TestState To, class Event>
+        void OnLeave(TransitionsCallbackSequenceCheck&, const Event&)
+        {
+            REQUIRE(false);
+        }
+    };
+
+    static constexpr auto TransitionRules{ MakeTransitionRules(
+        From<State1> && On<Event1> = To<State2>
+    )};
+
+    bool leaveCalled{ false };
+    bool enterCalled{ false };
+};
+
 struct TransitionsCallbacks :
         csm::StateMachine<TransitionsCallbacks, TestState>
 {
@@ -143,18 +194,18 @@ struct TransitionsCallbacks :
     struct WithEnter
     {
         template<TestState To, class Event>
-        void OnEnter(TransitionsCallbacks& impl, const Event& e)
+        void OnEnter(TransitionsCallbacks& obj, const Event& e)
         {
-            impl.enterData.push_back(e.data);
+            obj.enterData.push_back(e.data);
         }
     };
 
     struct WithLeave
     {
-        template<TestState To, class Event>
-        void OnLeave(TransitionsCallbacks& impl, const Event& e)
+        template<TestState From, class Event>
+        void OnLeave(TransitionsCallbacks& obj, const Event& e)
         {
-            impl.leaveData.push_back(e.data);
+            obj.leaveData.push_back(e.data);
         }
     };
 
@@ -269,27 +320,27 @@ struct ActionsBase : ActionRulesBase
     struct Add
     {
         template<class Event>
-        void operator()(ActionsBase& impl, const Event& e) const noexcept
+        void operator()(ActionsBase& obj, const Event& e) const noexcept
         {
-            impl.data += e.data;
+            obj.data += e.data;
         }
     };
 
     struct Sub
     {
         template<class Event>
-        void operator()(ActionsBase& impl, const Event& e) const noexcept
+        void operator()(ActionsBase& obj, const Event& e) const noexcept
         {
-            impl.data -= e.data;
+            obj.data -= e.data;
         }
     };
 
     struct Mult
     {
         template<class Event>
-        void operator()(ActionsBase& impl, const Event& e) const noexcept
+        void operator()(ActionsBase& obj, const Event& e) const noexcept
         {
-            impl.data *= e.data;
+            obj.data *= e.data;
         }
     };
 

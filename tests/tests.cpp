@@ -190,36 +190,47 @@ TEST_CASE("Check state transitions", "[StateMachine]" )
 
 TEST_CASE("Check state transition callbacks", "[StateMachine]" )
 {
-    TransitionsCallbacks sm{ TestState::_1 };
-    constexpr int data{ 42 };
+    SECTION ("Check call order")
+    {
+        TransitionsCallbackSequenceCheck sm;
+        REQUIRE_NOTHROW(sm.ProcessEvent(Event1{}));
+        REQUIRE(sm.GetState() == TestState::_2);
+        REQUIRE((sm.enterCalled && sm.leaveCalled));
+    }
 
-    REQUIRE_NOTHROW(sm.ProcessEvent(Event3{})); // 1 -> x
-    REQUIRE(sm.enterData.empty());
-    REQUIRE(sm.leaveData.empty());
+    SECTION("Check callbacks are called")
+    {
+        TransitionsCallbacks sm{ TestState::_1 };
+        constexpr int data{ 42 };
 
-    REQUIRE_NOTHROW(sm.ProcessEvent(Event1{})); // 1 -> 2
-    REQUIRE(sm.enterData.empty());
-    REQUIRE(sm.leaveData.empty());
+        REQUIRE_NOTHROW(sm.ProcessEvent(Event3{})); // 1 -> x
+        REQUIRE(sm.enterData.empty());
+        REQUIRE(sm.leaveData.empty());
 
-    REQUIRE_NOTHROW(sm.ProcessEvent(Event1{ {data} })); // 2 -> 3
-    REQUIRE(sm.leaveData.size() == 1);
-    REQUIRE(sm.enterData.size() == 1);
-    REQUIRE(sm.leaveData.back() == data);
-    REQUIRE(sm.enterData.back() == data);
-    sm.enterData.clear();
-    sm.leaveData.clear();
+        REQUIRE_NOTHROW(sm.ProcessEvent(Event1{})); // 1 -> 2
+        REQUIRE(sm.enterData.empty());
+        REQUIRE(sm.leaveData.empty());
 
-    REQUIRE_NOTHROW(sm.ProcessEvent(Event1{ {data} })); // 3 -> 1
-    REQUIRE(sm.leaveData.size() == 1);
-    REQUIRE(sm.enterData.size() == 1);
-    REQUIRE(sm.leaveData.back() == data);
-    REQUIRE(sm.enterData.back() == data);
-    sm.enterData.clear();
-    sm.leaveData.clear();
+        REQUIRE_NOTHROW(sm.ProcessEvent(Event1{ {data} })); // 2 -> 3
+        REQUIRE(sm.leaveData.size() == 1);
+        REQUIRE(sm.enterData.size() == 1);
+        REQUIRE(sm.leaveData.back() == data);
+        REQUIRE(sm.enterData.back() == data);
+        sm.enterData.clear();
+        sm.leaveData.clear();
 
-    REQUIRE_NOTHROW(sm.ProcessEvent(Event2{ {data} })); // 1 -> 4
-    REQUIRE(sm.enterData.empty());
-    REQUIRE(sm.leaveData.empty());
+        REQUIRE_NOTHROW(sm.ProcessEvent(Event1{ {data} })); // 3 -> 1
+        REQUIRE(sm.leaveData.size() == 1);
+        REQUIRE(sm.enterData.size() == 1);
+        REQUIRE(sm.leaveData.back() == data);
+        REQUIRE(sm.enterData.back() == data);
+        sm.enterData.clear();
+        sm.leaveData.clear();
+
+        REQUIRE_NOTHROW(sm.ProcessEvent(Event2{ {data} })); // 1 -> 4
+        REQUIRE(sm.enterData.empty());
+        REQUIRE(sm.leaveData.empty());
+    }
 }
 
 TEST_CASE("Check action dispatch", "[StateMachine]" )
