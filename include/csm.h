@@ -40,7 +40,7 @@ struct HasOnLeave<T, To, Object, E, std::void_t<
     : std::true_type
 {
     using R = decltype(As<T>().template OnLeave<To>(As<Object&>(), As<E>()));
-    static_assert(std::is_same_v<R, void>, "OnEnter() should return void");
+    static_assert(std::is_same_v<R, void>, "OnLeave() should return void");
 };
 
 template<class T, auto To, class Object, class E>
@@ -95,7 +95,7 @@ using FilterByEvent = MergeT<
         Pack<>>...>;
 
 template<class State, class... States>
-struct From : Pack<States...>
+struct From : Pack<State, States...>
 {
     using Type = typename State::Enum;
     static_assert((std::is_same_v<Type, typename States::Enum> && ...),
